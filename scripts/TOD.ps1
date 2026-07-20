@@ -15373,7 +15373,7 @@ function Invoke-ExecuteChatTaskRequest {
         $diagnosticIdentityText -match 'acknowledge-and-remediate-system-alerts-diagnostic|recover-trigger-ack-bridge-diagnostic|blocked-result-closure-diagnostic|resolve_blocked_task_result|diagnostic_implementation_repair|remediation-dispatch|remediate tod coordination issue|stalled_regression_no_delta'
     )
     $isDirectOperatorChatTask = [string]$TaskId -match '^TSKCHAT-'
-    if ($isDiagnosticImplementationRepair -and [string]::IsNullOrWhiteSpace($TargetFile) -and -not $isDirectOperatorChatTask) {
+    if ($isDiagnosticImplementationRepair -and [string]::IsNullOrWhiteSpace($TargetFile)) {
         $resolvedRequestIdForBlock = if (-not [string]::IsNullOrWhiteSpace($RequestId)) { [string]$RequestId } else { [string]$TaskId }
         $resolvedCorrelationIdForBlock = if (-not [string]::IsNullOrWhiteSpace($CorrelationId)) { [string]$CorrelationId } elseif (-not [string]::IsNullOrWhiteSpace($resolvedRequestIdForBlock)) { [string]$resolvedRequestIdForBlock } else { [string]$TaskId }
         $blockerSummary = 'Diagnostic implementation or closure requests must preserve exactly one bounded target_file before TOD can supersede or dispatch.'
@@ -17198,9 +17198,11 @@ function Register-TodIntakeItem {
     $activeLane = Read-TodIntakeArtifact -FileName $todActiveExecutionLaneFileName
     $decision = Resolve-TodIntakeDecision -IncomingItem $Item -ActiveLane $activeLane -ExistingItems $existingItems
     $preActiveLaneGate = $null
+    $itemTaskCategoryForGate = if ($Item.PSObject.Properties['task_category']) { ([string]$Item.task_category).Trim().ToLowerInvariant() } else { '' }
     $skipPreActiveLaneGateForDirectChat = (
         $Item.PSObject.Properties['source'] -and
-        [string]::Equals([string]$Item.source, 'operator_chat', [System.StringComparison]::OrdinalIgnoreCase)
+        [string]::Equals([string]$Item.source, 'operator_chat', [System.StringComparison]::OrdinalIgnoreCase) -and
+        $itemTaskCategoryForGate -in @('chat_execution', 'informational_chat', 'operator_chat')
     )
     if ((-not $skipPreActiveLaneGateForDirectChat) -and [string]$decision.decision -in @('run_now', 'supersede_active', 'pause_active')) {
         $preActiveLaneGate = Test-TodCanonicalActiveLaneGate -Item $Item -PromotionDecision ([string]$decision.decision) -PromotionReason ([string]$decision.reason)

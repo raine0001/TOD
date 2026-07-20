@@ -13,7 +13,7 @@ param(
     [string]$DialogScriptPath = "scripts/Invoke-TODMimDialog.ps1",
     [string]$RuntimeContractValidatorScriptPath = "scripts/validate_tod_mim_runtime_packet.py",
     [string]$ContractSourceDir = "tod/out/context-sync/contracts",
-    [int]$PollSeconds = 2,
+    [int]$PollSeconds = 30,
     [int]$RegressionNoDeltaThreshold = 4,
     [int]$QuarantineFailCycleThreshold = 5,
     [int]$IdleWakeupSeconds = 120,
@@ -140,6 +140,24 @@ function Get-SafeDialogSessionId {
     return ($safe -replace '[^a-zA-Z0-9._-]', '_')
 }
 
+function Limit-DialogSummary {
+    param(
+        [AllowNull()][string]$Text,
+        [int]$MaxLength = 260
+    )
+
+    $value = ([string]$Text).Trim()
+    if ($value.Length -le $MaxLength) {
+        return $value
+    }
+
+    if ($MaxLength -le 3) {
+        return $value.Substring(0, [Math]::Max(0, $MaxLength))
+    }
+
+    return ($value.Substring(0, $MaxLength - 3).TrimEnd() + '...')
+}
+
 function Invoke-DialogNotice {
     param(
         [Parameter(Mandatory = $true)][string]$ScriptAbs,
@@ -216,6 +234,8 @@ function Invoke-TaskTroubleshootingGuidance {
 
     $executionMode = if ($null -ne $Execution -and $Execution.PSObject.Properties['execution_mode']) { [string]$Execution.execution_mode } else { 'unknown' }
     $executionError = if ($null -ne $Execution -and $Execution.PSObject.Properties['error']) { [string]$Execution.error } else { '' }
+    $resultReasonCode = if ($null -ne $Execution -and $Execution.PSObject.Properties['result_reason_code']) { [string]$Execution.result_reason_code } else { '' }
+    $isMalformedBoundedEditPacket = [string]::Equals($resultReasonCode, 'malformed_bounded_edit_packet', [System.StringComparison]::OrdinalIgnoreCase) -or [string]::Equals($resultReasonCode, 'blocked_missing_bounded_edit_mode', [System.StringComparison]::OrdinalIgnoreCase)
     $decisionOutcome = if ($null -ne $DecisionPayload -and $DecisionPayload.PSObject.Properties['decision_outcome']) { [string]$DecisionPayload.decision_outcome } else { '' }
     $decisionReasonCode = if ($null -ne $DecisionPayload -and $DecisionPayload.PSObject.Properties['reason_code']) { [string]$DecisionPayload.reason_code } else { '' }
     $decisionNextStep = if ($null -ne $DecisionPayload -and $DecisionPayload.PSObject.Properties['next_step_recommendation']) { [string]$DecisionPayload.next_step_recommendation } else { '' }
@@ -255,7 +275,13 @@ function Invoke-TaskTroubleshootingGuidance {
         error = ''
     }
 
-    if (Test-Path -Path $ConversationProviderScriptAbs) {
+    if ($isMalformedBoundedEditPacket) {
+        $fallbackLikelyCause = 'The request was rejected before the active lane because the bounded edit packet is malformed or missing required execution fields.'
+        $guidanceText = 'Return this request to the originating authority for one corrected bounded edit packet. Required fields: target_file, edit_mode, anchor_or_old_text, new_text_or_snippet, validation_command, expected evidence, prevention lesson, and Dave-needed. Do not restore or mutate the active lane for a malformed packet; the gate is working as intended.'
+        $providerStatus.detail = 'Provider bypassed because malformed bounded-edit packets require deterministic gate-correct recovery guidance.'
+        $decisionNextStep = 'return_to_originating_authority_for_replan'
+    }
+    elseif (Test-Path -Path $ConversationProviderScriptAbs) {
         try {
             $prompt = @"
 You are generating bounded troubleshooting guidance for TOD after a MIM-issued task did not succeed.
@@ -407,7 +433,11 @@ function Publish-TaskTroubleshootingRequest {
         }
     }
 
-    $dialogResult = Invoke-DialogNotice -ScriptAbs $DialogScriptAbs -Action 'send' -SessionId $sessionId -MessageType 'handoff_request' -Intent 'task_troubleshooting' -Summary $summary -Payload $payload -TaskId $TaskId -CorrelationId $CorrelationId -EnvPath $EnvPath -PublishRemote:$PublishRemote
+    $boundedSummary = ([string]$summary).Trim()
+    if ($boundedSummary.Length -gt 260) {
+        $boundedSummary = $boundedSummary.Substring(0, 257).TrimEnd() + '...'
+    }
+    $dialogResult = Invoke-DialogNotice -ScriptAbs $DialogScriptAbs -Action 'send' -SessionId $sessionId -MessageType 'handoff_request' -Intent 'task_troubleshooting' -Summary $boundedSummary -Payload $payload -TaskId $TaskId -CorrelationId $CorrelationId -EnvPath $EnvPath -PublishRemote:$PublishRemote
     return [pscustomobject]@{
         ok = [bool]$dialogResult.ok
         status = [string]$dialogResult.status
@@ -699,6 +729,7 @@ function Get-MimRequestDecision {
     )
 
     $requestId = Get-RequestIdentifier -Request $Request
+    $requestTaskId = if ($Request.PSObject.Properties['task_id'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.task_id)) { [string]$Request.task_id } else { $requestId }
     $requestObjectiveId = Normalize-ObjectiveIdText -ObjectiveId (Get-ExpectedObjectiveFromRequest -Request $Request)
     $requestTarget = if ($Request.PSObject.Properties['target']) { ([string]$Request.target).Trim() } else { '' }
     $requestedExecutor = (Get-RequestExecutorRole -Request $Request).ToLowerInvariant()
@@ -769,6 +800,115 @@ function Get-MimRequestDecision {
     if ($requestMatchesLiveRequest -and -not [string]::IsNullOrWhiteSpace($liveRequestId) -and -not [string]::IsNullOrWhiteSpace($requestId)) {
         $promotionApplied = $true
         $failureSignals = @($failureSignals | Where-Object { $_ -ne 'live_task_request_not_promoted' })
+    }
+    $bridgeRemotePublishVerified = ($bridgeEvidence -and $bridgeEvidence.PSObject.Properties['remote_publish_verified'] -and [bool]$bridgeEvidence.remote_publish_verified)
+    $bridgeConsumerExecuted = ($bridgeEvidence -and $bridgeEvidence.PSObject.Properties['consumer_status'] -and [string]::Equals([string]$bridgeEvidence.consumer_status, 'executed', [System.StringComparison]::OrdinalIgnoreCase))
+    $requestTaskClass = if ($Request.PSObject.Properties['task_class']) { [string]$Request.task_class } elseif ($Request.PSObject.Properties['task_classification']) { [string]$Request.task_classification } else { '' }
+    $requestTargetFile = if ($Request.PSObject.Properties['target_file']) { [string]$Request.target_file } else { '' }
+    $allowLiveRequestAuthorityOverride =
+        (-not $authorityResetActive) -and
+        (-not $requestMatchesCanonical) -and
+        $requestMatchesLiveRequest -and
+        $promotionApplied -and
+        $bridgeRemotePublishVerified -and
+        $bridgeConsumerExecuted -and
+        [string]::Equals($requestTarget, 'TOD', [System.StringComparison]::OrdinalIgnoreCase) -and
+        [string]::Equals($requestTaskClass, 'implementation', [System.StringComparison]::OrdinalIgnoreCase) -and
+        (-not [string]::IsNullOrWhiteSpace($requestTargetFile))
+    if ($allowLiveRequestAuthorityOverride) {
+        $requestMatchesCanonical = $true
+        $failureSignals = @($failureSignals | Where-Object { $_ -notin @('live_task_request_objective_mismatch', 'live_task_request_task_mismatch', 'live_task_request_not_promoted') })
+        $validationReasons.Add(('live_request_authority_override:' + $requestId)) | Out-Null
+    }
+
+    $sourceSelectedActionCode = if ($Request.PSObject.Properties['source_selected_action_code']) { [string]$Request.source_selected_action_code } else { '' }
+    $requestObjectiveType = if ($Request.PSObject.Properties['objective_type']) { [string]$Request.objective_type } else { '' }
+    $isRecoverTriggerAckDiagnostic =
+        [string]::Equals($sourceSelectedActionCode, 'recover_trigger_ack_bridge', [System.StringComparison]::OrdinalIgnoreCase) -or
+        ([string]$requestId -match '(?i)-recover-trigger-ack-bridge-diagnostic$') -or
+        ([string]$requestTaskId -match '(?i)-recover-trigger-ack-bridge-diagnostic$')
+    $isSystemAlertDiagnostic =
+        [string]::Equals($sourceSelectedActionCode, 'acknowledge_and_remediate_system_alerts', [System.StringComparison]::OrdinalIgnoreCase) -or
+        ([string]$requestId -match '(?i)-acknowledge-and-remediate-system-alerts-diagnostic$') -or
+        ([string]$requestTaskId -match '(?i)-acknowledge-and-remediate-system-alerts-diagnostic$')
+    $isBlockedResultClosureDiagnostic =
+        [string]::Equals($sourceSelectedActionCode, 'resolve_blocked_task_result', [System.StringComparison]::OrdinalIgnoreCase) -or
+        ([string]$requestId -match '(?i)-blocked-result-closure-diagnostic$') -or
+        ([string]$requestTaskId -match '(?i)-blocked-result-closure-diagnostic$')
+    $isDiagnosticOnlyRequest =
+        [string]::Equals($requestTaskClass, 'diagnostic_only', [System.StringComparison]::OrdinalIgnoreCase) -or
+        [string]::Equals($requestObjectiveType, 'diagnostic_only', [System.StringComparison]::OrdinalIgnoreCase)
+    if (
+        $isRecoverTriggerAckDiagnostic -and
+        [string]::Equals($action, 'execute-chat-task', [System.StringComparison]::OrdinalIgnoreCase) -and
+        [string]::IsNullOrWhiteSpace($requestTargetFile)
+    ) {
+        $validationReasons.Add('recover_trigger_ack_bridge_wrapper_missing_bounded_packet') | Out-Null
+        return [pscustomobject]@{
+            decision_outcome = 'reject_with_specific_policy_reason'
+            reason_code = 'diagnostic_wrapper_missing_bounded_implementation_packet'
+            summary = 'MIM sent a bridge-recovery diagnostic wrapper without the bounded implementation fields TOD needs to execute. The existing channel is alive; MIM must republish an implementation-shaped request instead of another bridge recovery wrapper.'
+            boundary_class = $boundaryClass
+            requested_executor = $requestedExecutor
+            requested_objective_id = $requestObjectiveId
+            canonical_objective_id = $canonicalObjective
+            live_request_promotion_applied = $promotionApplied
+            execution_readiness = $readinessTrace
+            validation_reasoning = @($validationReasons)
+            unmet_dependency = 'bounded_implementation_packet'
+            blocker_classification = 'request_shape_rejection'
+            next_step_recommendation = 'republish_existing_channel_bounded_implementation_request'
+            requires_human = $false
+            required_fields = @('task_class=implementation', 'target_file', 'minimal_patch_plan', 'validation_plan', 'changed_files_required_for_success=true', 'prevention_lesson', 'dave_needed')
+        }
+    }
+    if (
+        $isSystemAlertDiagnostic -and
+        [string]::Equals($action, 'execute-chat-task', [System.StringComparison]::OrdinalIgnoreCase) -and
+        [string]::IsNullOrWhiteSpace($requestTargetFile)
+    ) {
+        $validationReasons.Add('system_alert_diagnostic_wrapper_missing_bounded_packet') | Out-Null
+        return [pscustomobject]@{
+            decision_outcome = 'reject_with_specific_policy_reason'
+            reason_code = 'diagnostic_wrapper_missing_bounded_implementation_packet'
+            summary = 'MIM sent a system-alert diagnostic wrapper without the bounded implementation fields TOD needs to execute. The existing channel is alive; MIM must republish or preserve the implementation-shaped request instead of replacing it with a status wrapper.'
+            boundary_class = $boundaryClass
+            requested_executor = $requestedExecutor
+            requested_objective_id = $requestObjectiveId
+            canonical_objective_id = $canonicalObjective
+            live_request_promotion_applied = $promotionApplied
+            execution_readiness = $readinessTrace
+            validation_reasoning = @($validationReasons)
+            unmet_dependency = 'bounded_implementation_packet'
+            blocker_classification = 'request_shape_rejection'
+            next_step_recommendation = 'preserve_or_republish_existing_channel_bounded_implementation_request'
+            requires_human = $false
+            required_fields = @('task_class=implementation', 'target_file', 'minimal_patch_plan', 'validation_plan', 'changed_files_required_for_success=true', 'prevention_lesson', 'dave_needed')
+        }
+    }
+    if (
+        $isBlockedResultClosureDiagnostic -and
+        [string]::Equals($action, 'execute-chat-task', [System.StringComparison]::OrdinalIgnoreCase) -and
+        [string]::IsNullOrWhiteSpace($requestTargetFile)
+    ) {
+        $validationReasons.Add('blocked_result_closure_wrapper_missing_bounded_packet') | Out-Null
+        return [pscustomobject]@{
+            decision_outcome = 'reject_with_specific_policy_reason'
+            reason_code = 'diagnostic_wrapper_missing_bounded_implementation_packet'
+            summary = 'MIM sent a blocked-result closure diagnostic wrapper without the bounded implementation fields TOD needs to execute. The existing channel is alive; MIM must preserve the implementation-shaped request or ask TOD for an inspected anchor blocker instead of replacing the active packet.'
+            boundary_class = $boundaryClass
+            requested_executor = $requestedExecutor
+            requested_objective_id = $requestObjectiveId
+            canonical_objective_id = $canonicalObjective
+            live_request_promotion_applied = $promotionApplied
+            execution_readiness = $readinessTrace
+            validation_reasoning = @($validationReasons)
+            unmet_dependency = 'bounded_implementation_packet'
+            blocker_classification = 'request_shape_rejection'
+            next_step_recommendation = 'preserve_bounded_request_or_publish_inspected_anchor_blocker'
+            requires_human = $false
+            required_fields = @('task_class=implementation', 'target_file', 'edit_mode_or_inspected_anchor_blocker', 'validation_plan', 'prevention_lesson', 'dave_needed')
+        }
     }
 
     $externalCoordinationSignals = @('listener_task_request_missing', 'live_task_request_objective_mismatch', 'live_task_request_not_promoted', 'remote_consumer_not_executed', 'remote_delivery_not_confirmed')
@@ -1432,7 +1572,7 @@ function Publish-CoordinationPendingInquiry {
         return $null
     }
 
-    $summary = ('TOD observed coordination request {0} still pending after {1}s; what is missing for closure?' -f [string]$RequestId, [int]$TimeoutSeconds)
+    $summary = ('TOD observed coordination request {0} still pending after {1}s; MIM must publish the smallest bounded implementation request needed for TOD to close it.' -f [string]$RequestId, [int]$TimeoutSeconds)
     $payload = [pscustomobject]@{
         source = 'tod-listener-coordination-followup-v1'
         request_id = [string]$RequestId
@@ -1444,16 +1584,71 @@ function Publish-CoordinationPendingInquiry {
         coordination_ack_reason = [string]$AckReason
         timeout_seconds = [int]$TimeoutSeconds
         elapsed_seconds = [int]$ElapsedSeconds
+        action = 'Convert this coordination blocker into one bounded implementation request on the existing MIM/TOD task channel; do not create a new transport or SSH channel.'
+        owner = 'MIM'
+        requested_action = 'Publish one implementation-shaped TOD request with exactly one target_file, task_class=implementation, changed_files_required_for_success=true, a minimal patch plan, validation_plan, prevention_lesson, and dave_needed yes/no.'
+        requested_mim_action = 'Select the smallest real code or artifact behavior change that resolves the current blocker and send TOD a bounded implementation packet instead of another diagnostic/status request.'
+        required_tod_action = 'After MIM publishes the bounded implementation request, TOD must inspect the target file, make the minimal change, validate it, and publish execution evidence.'
+        evidence_request = 'Reply with the new request_id, target_file, patch_type or minimal_patch_plan, validation_plan, and why Dave is or is not needed.'
+        evidence_required = @(
+            'existing shared MIM/TOD channel artifact path or request_id',
+            'exactly one target_file',
+            'minimal_patch_plan or patch_type',
+            'validation_plan',
+            'changed_files_required_for_success=true',
+            'prevention_lesson',
+            'dave_needed yes/no with reason'
+        )
+        required_fields = @(
+            'task_class=implementation',
+            'target_file',
+            'minimal_patch_plan',
+            'validation_plan',
+            'changed_files_required_for_success=true',
+            'prevention_lesson',
+            'dave_needed'
+        )
+        required_mim_response_fields = @(
+            'action',
+            'owner',
+            'evidence',
+            'aging_rule',
+            'dave_needed'
+        )
+        requested_reply = [pscustomobject]@{
+            needed = $true
+            fields = @('action', 'owner', 'bounded_request_id', 'target_file', 'patch_plan', 'validation_plan', 'evidence', 'aging_rule', 'dave_needed')
+        }
+        accepted_outcomes = @(
+            'bounded_implementation_request_published',
+            'external_dependency_proven_with_evidence'
+        )
+        no_credit_if = @(
+            'new SSH or transport channel proposed',
+            'diagnostic-only request',
+            'status-only reply',
+            'multi-file broad rewrite',
+            'missing target_file',
+            'missing validation_plan'
+        )
+        acceptable_result = 'MIM publishes a bounded implementation-shaped request that TOD can execute through the existing shared channel.'
+        aging_rule = 'If no bounded implementation request is published within the next listener cycle, keep this open as MIM request-shape debt and do not count it as TOD progress.'
+        dave_needed = 'no unless the bounded implementation requires credentials, production account changes, or an external service decision.'
         requested_feedback = @(
-            'missing_fields',
-            'missing_artifacts',
-            'expected_values',
-            'next_action'
+            'bounded_request_id',
+            'target_file',
+            'patch_plan',
+            'validation_plan',
+            'dave_needed'
         )
         coordination_request = $CoordinationRequest
         bridge_runtime = $BridgeRuntime
     }
-    $dialogResult = Invoke-DialogNotice -ScriptAbs $DialogScriptAbs -Action 'send' -SessionId $sessionId -MessageType 'status_request' -Intent 'coordination_pending_timeout' -Summary $summary -Payload $payload -TaskId $RequestId -CorrelationId ([string]$IssueCode) -EnvPath $EnvPath -PublishRemote:$PublishRemote
+    $boundedSummary = ([string]$summary).Trim()
+    if ($boundedSummary.Length -gt 260) {
+        $boundedSummary = $boundedSummary.Substring(0, 257).TrimEnd() + '...'
+    }
+    $dialogResult = Invoke-DialogNotice -ScriptAbs $DialogScriptAbs -Action 'send' -SessionId $sessionId -MessageType 'status_request' -Intent 'coordination_pending_timeout' -Summary $boundedSummary -Payload $payload -TaskId $RequestId -CorrelationId ([string]$IssueCode) -EnvPath $EnvPath -PublishRemote:$PublishRemote
     if (-not [bool]$dialogResult.ok) {
         return $dialogResult
     }
@@ -2254,6 +2449,22 @@ function Get-CoordinationPriority {
     }
 }
 
+function Test-CoordinationIsRegressionRelated {
+    param(
+        [AllowNull()]$CoordinationRequest = $null,
+        [AllowNull()]$CoordinationEscalationState = $null
+    )
+
+    $issueCode = if ($CoordinationRequest -and $CoordinationRequest.PSObject.Properties["issue_code"]) { [string]$CoordinationRequest.issue_code } else { "" }
+    $pendingIssueCode = if ($CoordinationEscalationState -and $CoordinationEscalationState.PSObject.Properties["pending_issue_code"]) { [string]$CoordinationEscalationState.pending_issue_code } else { "" }
+
+    return (
+        [string]::IsNullOrWhiteSpace($issueCode) -or
+        ($issueCode -match "regression") -or
+        ($pendingIssueCode -match "regression")
+    )
+}
+
 function Publish-ContractViolationCoordination {
     param(
         [Parameter(Mandatory = $true)]$CoordinationEscalationState,
@@ -2424,6 +2635,42 @@ function Publish-ResolvedCoordination {
     }
 
     return $coordinationResolved
+}
+
+function Test-ResultCanAutoResolveContractViolation {
+    param([AllowNull()]$ResultPacket = $null)
+
+    if ($null -eq $ResultPacket) {
+        return $false
+    }
+
+    $status = if ($ResultPacket.PSObject.Properties['status']) {
+        ([string]$ResultPacket.status).Trim().ToLowerInvariant()
+    }
+    else {
+        ''
+    }
+    $resultStatus = if ($ResultPacket.PSObject.Properties['result_status']) {
+        ([string]$ResultPacket.result_status).Trim().ToLowerInvariant()
+    }
+    else {
+        ''
+    }
+    $reasonCode = if ($ResultPacket.PSObject.Properties['result_reason_code']) {
+        ([string]$ResultPacket.result_reason_code).Trim().ToLowerInvariant()
+    }
+    else {
+        ''
+    }
+
+    if ($status -in @('blocked', 'failed') -or $resultStatus -in @('blocked', 'failed')) {
+        return $false
+    }
+    if (-not [string]::IsNullOrWhiteSpace($reasonCode) -and $reasonCode -match 'blocked|failed|missing') {
+        return $false
+    }
+
+    return $true
 }
 
 function Get-StateFileFootprint {
@@ -2597,11 +2844,22 @@ function Publish-CommandStatus {
         $bridgeCurrentProcessing = if ($null -ne $BridgeRuntime -and $BridgeRuntime.PSObject.Properties['current_processing']) { $BridgeRuntime.current_processing } else { $null }
         $bridgeTaskId = Get-ObjectFieldText -InputObject $bridgeCurrentProcessing -FieldName 'task_id'
         $bridgeCorrelationId = Get-ObjectFieldText -InputObject $bridgeCurrentProcessing -FieldName 'correlation_id'
+        $lineageWarnings = @()
         if (-not [string]::IsNullOrWhiteSpace($bridgeTaskId) -and -not [string]::Equals($bridgeTaskId, $effectiveTaskId, [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw ("execution_lineage_task_id_mismatch: bridge_runtime.current_processing.task_id={0} expected={1}" -f $bridgeTaskId, $effectiveTaskId)
+            if ($bridgeTaskId -match '^coordination-') {
+                $lineageWarnings += ("coordination_wrapper_task_id={0}; execution_task_id={1}" -f $bridgeTaskId, $effectiveTaskId)
+            }
+            else {
+                throw ("execution_lineage_task_id_mismatch: bridge_runtime.current_processing.task_id={0} expected={1}" -f $bridgeTaskId, $effectiveTaskId)
+            }
         }
         if (-not [string]::IsNullOrWhiteSpace($bridgeCorrelationId) -and -not [string]::Equals($bridgeCorrelationId, $effectiveCorrelationId, [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw ("execution_lineage_correlation_id_mismatch: bridge_runtime.current_processing.correlation_id={0} expected={1}" -f $bridgeCorrelationId, $effectiveCorrelationId)
+            if ($bridgeCorrelationId -match '^coordination-') {
+                $lineageWarnings += ("coordination_wrapper_correlation_id={0}; execution_correlation_id={1}" -f $bridgeCorrelationId, $effectiveCorrelationId)
+            }
+            else {
+                throw ("execution_lineage_correlation_id_mismatch: bridge_runtime.current_processing.correlation_id={0} expected={1}" -f $bridgeCorrelationId, $effectiveCorrelationId)
+            }
         }
         $statusAt = Get-UtcNowString
         $triggerContext = Get-TriggerContext -TriggerPacket $TriggerPacket
@@ -2698,6 +2956,7 @@ function Publish-CommandStatus {
             ack = $ackPayload
             result = $resultPayload
             bridge_runtime = $BridgeRuntime
+            lineage_warnings = @($lineageWarnings)
             stale_guard = $effectiveStaleGuard
             decision = $DecisionPayload
         }
@@ -2794,11 +3053,22 @@ function Publish-ExecutionDecision {
         $bridgeCurrentProcessing = if ($null -ne $BridgeRuntime -and $BridgeRuntime.PSObject.Properties['current_processing']) { $BridgeRuntime.current_processing } else { $null }
         $bridgeTaskId = Get-ObjectFieldText -InputObject $bridgeCurrentProcessing -FieldName 'task_id'
         $bridgeCorrelationId = Get-ObjectFieldText -InputObject $bridgeCurrentProcessing -FieldName 'correlation_id'
+        $lineageWarnings = @()
         if (-not [string]::IsNullOrWhiteSpace($bridgeTaskId) -and -not [string]::Equals($bridgeTaskId, $effectiveTaskId, [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw ("execution_decision_task_id_mismatch: bridge_runtime.current_processing.task_id={0} expected={1}" -f $bridgeTaskId, $effectiveTaskId)
+            if ($bridgeTaskId -match '^coordination-') {
+                $lineageWarnings += ("coordination_wrapper_task_id={0}; execution_task_id={1}" -f $bridgeTaskId, $effectiveTaskId)
+            }
+            else {
+                throw ("execution_decision_task_id_mismatch: bridge_runtime.current_processing.task_id={0} expected={1}" -f $bridgeTaskId, $effectiveTaskId)
+            }
         }
         if (-not [string]::IsNullOrWhiteSpace($bridgeCorrelationId) -and -not [string]::Equals($bridgeCorrelationId, $effectiveCorrelationId, [System.StringComparison]::OrdinalIgnoreCase)) {
-            throw ("execution_decision_correlation_id_mismatch: bridge_runtime.current_processing.correlation_id={0} expected={1}" -f $bridgeCorrelationId, $effectiveCorrelationId)
+            if ($bridgeCorrelationId -match '^coordination-') {
+                $lineageWarnings += ("coordination_wrapper_correlation_id={0}; execution_correlation_id={1}" -f $bridgeCorrelationId, $effectiveCorrelationId)
+            }
+            else {
+                throw ("execution_decision_correlation_id_mismatch: bridge_runtime.current_processing.correlation_id={0} expected={1}" -f $bridgeCorrelationId, $effectiveCorrelationId)
+            }
         }
         $triggerContext = Get-TriggerContext -TriggerPacket $TriggerPacket
         $payload = [pscustomobject]@{
@@ -2825,6 +3095,7 @@ function Publish-ExecutionDecision {
             validation_reasoning = if ($DecisionPayload.PSObject.Properties['validation_reasoning']) { @($DecisionPayload.validation_reasoning | ForEach-Object { [string]$_ }) } else { @() }
             trigger = $triggerContext
             bridge_runtime = $BridgeRuntime
+            lineage_warnings = @($lineageWarnings)
         }
 
         Write-JsonFile -PathValue $LocalPath -Payload $payload -Depth 100
@@ -3459,11 +3730,70 @@ function Get-ResultReasonCode {
 
     $statusNormalized = ([string]$Status).Trim().ToLowerInvariant()
     if ($statusNormalized -eq 'succeeded') { return 'execution_completed' }
-    if ($statusNormalized -eq 'blocked') { return 'execution_readiness_blocked' }
+    if ($statusNormalized -eq 'blocked') {
+        if ($Execution -and $Execution.PSObject.Properties['payload_blocker'] -and $Execution.payload_blocker -and $Execution.payload_blocker.PSObject.Properties['reason_code'] -and -not [string]::IsNullOrWhiteSpace([string]$Execution.payload_blocker.reason_code)) {
+            return [string]$Execution.payload_blocker.reason_code
+        }
+        return 'execution_readiness_blocked'
+    }
     if ($ReviewGate -and -not [bool]$ReviewGate.passed) { return 'review_gate_failed' }
     if ($ValidatorResult -and -not [bool]$ValidatorResult.passed) { return 'invalid_packet_shape' }
     if ($Execution -and $Execution.PSObject.Properties['execution_mode'] -and [string]::Equals([string]$Execution.execution_mode, 'timeout', [System.StringComparison]::OrdinalIgnoreCase)) { return 'executor_timed_out' }
     return 'executor_failed'
+}
+
+function Get-ExecutionPayloadBlocker {
+    param([AllowNull()]$Payload = $null)
+
+    $candidates = New-Object System.Collections.Generic.List[object]
+    if ($null -ne $Payload) {
+        $candidates.Add($Payload)
+        if ($Payload.PSObject.Properties['run_task'] -and $null -ne $Payload.run_task) {
+            $candidates.Add($Payload.run_task)
+        }
+        if ($Payload.PSObject.Properties['payload'] -and $null -ne $Payload.payload) {
+            $candidates.Add($Payload.payload)
+        }
+        if ($Payload.PSObject.Properties['engine_invocation'] -and $Payload.engine_invocation -and $Payload.engine_invocation.PSObject.Properties['result'] -and $null -ne $Payload.engine_invocation.result) {
+            $candidates.Add($Payload.engine_invocation.result)
+        }
+    }
+
+    foreach ($candidate in $candidates) {
+        if ($null -eq $candidate) { continue }
+        $reasonCode = if ($candidate.PSObject.Properties['reason_code']) { [string]$candidate.reason_code } else { '' }
+        $summary = if ($candidate.PSObject.Properties['summary']) { [string]$candidate.summary } else { '' }
+        $decision = if ($candidate.PSObject.Properties['decision']) { ([string]$candidate.decision).Trim().ToLowerInvariant() } else { '' }
+        $status = if ($candidate.PSObject.Properties['status']) { ([string]$candidate.status).Trim().ToLowerInvariant() } else { '' }
+        $executionStatus = if ($candidate.PSObject.Properties['execution_status']) { ([string]$candidate.execution_status).Trim().ToLowerInvariant() } else { '' }
+        $failureCategory = if ($candidate.PSObject.Properties['failure_category']) { ([string]$candidate.failure_category).Trim().ToLowerInvariant() } else { '' }
+        $blockedFlag = ($candidate.PSObject.Properties['blocked'] -and [bool]$candidate.blocked)
+        $isBlocked = (
+            $blockedFlag -or
+            $decision -in @('blocked', 'revise', 'failed') -or
+            $status -in @('blocked', 'blocked_with_reason', 'blocked_with_inspection') -or
+            $executionStatus -in @('blocked', 'blocked_with_reason', 'blocked_with_inspection') -or
+            $failureCategory -eq 'materialization_blocked' -or
+            [string]::Equals($reasonCode, 'blocked_missing_bounded_edit_mode', [System.StringComparison]::OrdinalIgnoreCase)
+        )
+        if ($isBlocked) {
+            return [pscustomobject]@{
+                blocked = $true
+                reason_code = $(if (-not [string]::IsNullOrWhiteSpace($reasonCode)) { $reasonCode } elseif (-not [string]::IsNullOrWhiteSpace($failureCategory)) { $failureCategory } else { 'payload_reported_blocked' })
+                summary = $summary
+                decision = $decision
+                status = $(if (-not [string]::IsNullOrWhiteSpace($status)) { $status } else { $executionStatus })
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        blocked = $false
+        reason_code = ''
+        summary = ''
+        decision = ''
+        status = ''
+    }
 }
 
 function Read-RuntimeBindingState {
@@ -5109,11 +5439,11 @@ function Resolve-RequestExecutionScope {
         $lines.Add(('Validation Command: {0}' -f $validationCommand)) | Out-Null
     }
 
-    $requiredEvidence = Get-RequestStringArrayField -Source $Request -Names @('required_evidence', 'expected_evidence')
-    if ($requiredEvidence.Count -eq 0) {
-        $requiredEvidence = Get-RequestStringArrayField -Source $boundedSlice -Names @('required_evidence', 'expected_evidence')
+    $requiredEvidence = @(Get-RequestStringArrayField -Source $Request -Names @('required_evidence', 'expected_evidence'))
+    if (@($requiredEvidence).Count -eq 0) {
+        $requiredEvidence = @(Get-RequestStringArrayField -Source $boundedSlice -Names @('required_evidence', 'expected_evidence'))
     }
-    if ($requiredEvidence.Count -gt 0) {
+    if (@($requiredEvidence).Count -gt 0) {
         $lines.Add(('Required Evidence: {0}' -f (@($requiredEvidence) -join '; '))) | Out-Null
     }
 
@@ -5367,19 +5697,21 @@ function Invoke-RequestExecution {
 
         $payloadReadiness = if ($null -ne $payload -and $payload.PSObject.Properties["execution_readiness"]) { $payload.execution_readiness } else { $readinessTrace }
         $payloadTrace = if ($null -ne $payload -and $payload.PSObject.Properties["execution_trace"]) { $payload.execution_trace } elseif ($null -ne $payloadReadiness) { [pscustomobject]@{ action = $action; execution_readiness = $payloadReadiness } } else { $null }
+        $payloadBlocker = Get-ExecutionPayloadBlocker -Payload $payload
 
         return [pscustomobject]@{
             ok = $true
-            blocked = if ($null -ne $payload -and $payload.PSObject.Properties["blocked"]) { [bool]$payload.blocked } else { $false }
+            blocked = [bool]$payloadBlocker.blocked
             action = $action
             execution_mode = "direct_script_success"
             started_at = $startUtc
             completed_at = $endUtc
             execution_readiness = $payloadReadiness
             execution_trace = $payloadTrace
+            payload_blocker = $payloadBlocker
             payload = $payload
             output = [string]($raw | Out-String)
-            error = ""
+            error = $(if ([bool]$payloadBlocker.blocked -and -not [string]::IsNullOrWhiteSpace([string]$payloadBlocker.summary)) { [string]$payloadBlocker.summary } else { "" })
         }
     }
     catch {
@@ -5532,7 +5864,17 @@ function Get-RequestAlignedIntegrationStatus {
         $liveObjective = Normalize-ObjectiveIdText -ObjectiveId ([string]$liveTaskRequest.objective_id)
     }
 
-    if (-not [string]::Equals($liveObjective, $expectedObjective, [System.StringComparison]::OrdinalIgnoreCase)) {
+    $requestTargetFile = if ($Request.PSObject.Properties['target_file']) { [string]$Request.target_file } else { '' }
+    $requestTargetFiles = if ($Request.PSObject.Properties['target_files'] -and $null -ne $Request.target_files) { @($Request.target_files | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } else { @() }
+    $requestTaskClass = if ($Request.PSObject.Properties['task_class']) { [string]$Request.task_class } elseif ($Request.PSObject.Properties['objective_type']) { [string]$Request.objective_type } else { '' }
+    $requestValidationOnly = if ($Request.PSObject.Properties['validation_only']) { [bool]$Request.validation_only } else { $false }
+    $requestIsExecutableImplementation = (
+        -not $requestValidationOnly -and
+        -not [string]::Equals($requestTaskClass, 'diagnostic_only', [System.StringComparison]::OrdinalIgnoreCase) -and
+        (-not [string]::IsNullOrWhiteSpace($requestTargetFile) -or @($requestTargetFiles).Count -gt 0)
+    )
+
+    if (-not [string]::Equals($liveObjective, $expectedObjective, [System.StringComparison]::OrdinalIgnoreCase) -and -not $requestIsExecutableImplementation) {
         return $IntegrationStatus
     }
 
@@ -5557,8 +5899,9 @@ function Get-RequestAlignedIntegrationStatus {
     }
     $copy | Add-Member -NotePropertyName listener_alignment_override -NotePropertyValue ([pscustomobject]@{
         applied = $true
-        reason = 'live_task_request_objective_matches_executing_request'
+        reason = if ([string]::Equals($liveObjective, $expectedObjective, [System.StringComparison]::OrdinalIgnoreCase)) { 'live_task_request_objective_matches_executing_request' } else { 'frozen_executable_request_objective_used_for_result_contract' }
         expected_objective = $expectedObjective
+        live_task_request_objective = $liveObjective
         original_tod_current_objective = if ($IntegrationStatus.PSObject.Properties['objective_alignment'] -and $IntegrationStatus.objective_alignment.PSObject.Properties['tod_current_objective']) { [string]$IntegrationStatus.objective_alignment.tod_current_objective } else { '' }
         original_mim_objective_active = if ($IntegrationStatus.PSObject.Properties['objective_alignment'] -and $IntegrationStatus.objective_alignment.PSObject.Properties['mim_objective_active']) { [string]$IntegrationStatus.objective_alignment.mim_objective_active } else { '' }
     }) -Force
@@ -6267,8 +6610,7 @@ try {
                 # Only treat as stale if the artifact is regression-related; non-regression requests
                 # (e.g. handoff_artifact_alias_detected) must not be auto-resolved by regression-green logic.
                 $existingCoordPayload = Read-JsonFileIfExists -PathValue $localCoordinationRequestPath
-                $existingIssueCode = if ($existingCoordPayload -and $existingCoordPayload.PSObject.Properties["issue_code"]) { [string]$existingCoordPayload.issue_code } else { "" }
-                $hasStaleRequestArtifact = [string]::IsNullOrWhiteSpace($existingIssueCode) -or ($existingIssueCode -match "regression")
+                $hasStaleRequestArtifact = Test-CoordinationIsRegressionRelated -CoordinationRequest $existingCoordPayload -CoordinationEscalationState $coordinationEscalationState
             }
             if ($hasPendingEscalation -or $hasStaleRequestArtifact) {
                 $loopResolveReason = "Regression failures are zero; stale coordination escalation has been auto-resolved."
@@ -6754,10 +7096,13 @@ try {
 
             if ([int]$regressionSnapshot.failed -le 0) {
                 $autoResolveReason = "Regression failures are zero; stale coordination escalation has been auto-resolved."
+                $existingCoordPayload = Read-JsonFileIfExists -PathValue $localCoordinationRequestPath
+                $coordinationIsRegressionRelated = Test-CoordinationIsRegressionRelated -CoordinationRequest $existingCoordPayload -CoordinationEscalationState $coordinationEscalationState
 
-                if (-not [string]::IsNullOrWhiteSpace([string]$coordinationEscalationState.pending_request_id) -or
+                if ($coordinationIsRegressionRelated -and (
+                    -not [string]::IsNullOrWhiteSpace([string]$coordinationEscalationState.pending_request_id) -or
                     [int]$coordinationEscalationState.emit_count -gt 0 -or
-                    (Test-Path -Path $localCoordinationRequestPath)) {
+                    (Test-Path -Path $localCoordinationRequestPath))) {
                     Clear-CoordinationEscalationState -State $coordinationEscalationState -Reason $autoResolveReason -RequestId $requestId
                     Write-JsonFile -PathValue $localCoordinationEscalationStatePath -Payload $coordinationEscalationState
 
@@ -7094,7 +7439,10 @@ try {
             continue
         }
         Register-RuntimeValidationResult -StatePath $localRuntimeBindingStatePath -BindingMetadata $contractBinding -PacketKind 'result' -Packet $resultPacket -ValidationResult $resultValidation -State 'active' | Out-Null
-        if ([string]::Equals([string]$coordinationEscalationState.pending_issue_code, 'runtime_contract_violation_result', [System.StringComparison]::OrdinalIgnoreCase)) {
+        if (
+            [string]::Equals([string]$coordinationEscalationState.pending_issue_code, 'runtime_contract_violation_result', [System.StringComparison]::OrdinalIgnoreCase) -and
+            (Test-ResultCanAutoResolveContractViolation -ResultPacket $resultPacket)
+        ) {
             $null = Publish-ResolvedCoordination -CoordinationEscalationState $coordinationEscalationState -CoordinationEscalationStatePath $localCoordinationEscalationStatePath -LocalCoordinationRequestPath $localCoordinationRequestPath -RemoteCoordinationRequestPath $remoteCoordinationRequestPath -Connections $connections -RequestId $requestId -ObjectiveId $requestObjectiveId -IssueCode 'runtime_contract_violation_result_resolved' -IssueSummary 'TOD auto-closed the prior RESULT contract-violation notice after RESULT validation succeeded again.' -Evidence ([pscustomobject]@{ packet_kind = 'result'; task_id = [string]$resultPacket.task_id; correlation_id = [string]$resultPacket.correlation_id; status = [string]$resultPacket.status; result_reason_code = [string]$resultPacket.result_reason_code; resolution_basis = 'result_validation_passed' }) -ResolutionReason 'RESULT validation now passes; prior contract delta is resolved.' -BridgeRuntime $bridgeRuntime -ResolutionDecision 'auto_resolved_contract_valid'
         }
         $null = Sync-LocalExecutionOutcome -TaskId $requestTaskId -ObjectiveId $requestObjectiveId -ResultPacket $resultPacket

@@ -165,6 +165,7 @@ Describe 'TOD packet listener ordering hardening' {
         Import-ListenerFunction -Name 'Get-UtcNowString'
         Import-ListenerFunction -Name 'Get-ExecutionReadinessTrace'
         Import-ListenerFunction -Name 'Get-MimRequestDecision'
+        Import-ListenerFunction -Name 'Get-RequestAlignedIntegrationStatus'
         Import-ListenerFunction -Name 'Convert-JsonDeserializedValue'
         Import-ListenerFunction -Name 'ConvertFrom-JsonCaseInsensitiveSafe'
         Import-ListenerFunction -Name 'Get-ObjectFieldLong'
@@ -177,15 +178,162 @@ Describe 'TOD packet listener ordering hardening' {
         Import-ListenerFunction -Name 'Get-RetryWeight'
         Import-ListenerFunction -Name 'Update-CadencePlan'
         Import-ListenerFunction -Name 'Get-ListenerExecutionFeedbackConfig'
+        Import-ListenerFunction -Name 'Get-ExecutionPayloadBlocker'
+        Import-ListenerFunction -Name 'Get-ResultReasonCode'
+        Import-ListenerFunction -Name 'Get-LocalPath'
+        Import-ListenerFunction -Name 'Get-SafeDialogSessionId'
+        Import-ListenerFunction -Name 'Get-DateOrMinValue'
+        Import-ListenerFunction -Name 'Publish-CoordinationPendingInquiry'
         Import-ListenerFunction -Name 'Get-RequestExecutionId'
         Import-ListenerFunction -Name 'Resolve-ExecutionFeedbackEndpoint'
         Import-ListenerFunction -Name 'Publish-ExecutionFeedbackFromRequest'
+        Import-ListenerFunction -Name 'Get-RequestTextField'
+        Import-ListenerFunction -Name 'Get-RequestStringArrayField'
+        Import-ListenerFunction -Name 'Resolve-RequestExecutionScope'
         Import-ListenerFunction -Name 'Invoke-RequestExecution'
         Import-ListenerFunction -Name 'Get-ObjectFieldText'
         Import-ListenerFunction -Name 'Get-NonEmptyPacketValue'
         Import-ListenerFunction -Name 'Get-TriggerContext'
         Import-ListenerFunction -Name 'Publish-CommandStatus'
+        Import-ListenerFunction -Name 'Publish-ExecutionDecision'
         Import-ListenerFunction -Name 'Publish-ExecutionLock'
+        Import-ListenerFunction -Name 'Test-ResultCanAutoResolveContractViolation'
+        Import-ListenerFunction -Name 'Test-CoordinationIsRegressionRelated'
+    }
+
+    It 'does not treat request-shape coordination as regression cleanup debt' {
+        $requestShapeCoordination = [pscustomobject]@{
+            issue_code = 'mim_request_shape_blocked_missing_target_file'
+        }
+        $requestShapeState = [pscustomobject]@{
+            pending_issue_code = 'mim_request_shape_blocked_missing_target_file'
+        }
+        $regressionCoordination = [pscustomobject]@{
+            issue_code = 'stalled_regression_no_delta'
+        }
+
+        [bool](Test-CoordinationIsRegressionRelated -CoordinationRequest $requestShapeCoordination -CoordinationEscalationState $requestShapeState) | Should Be $false
+        [bool](Test-CoordinationIsRegressionRelated -CoordinationRequest $regressionCoordination -CoordinationEscalationState $null) | Should Be $true
+        [bool](Test-CoordinationIsRegressionRelated -CoordinationRequest $null -CoordinationEscalationState $null) | Should Be $true
+    }
+
+    It 'does not auto-resolve a result contract violation when the RESULT is blocked' {
+        $blockedResult = [pscustomobject]@{
+            status = 'blocked'
+            result_status = 'blocked'
+            result_reason_code = 'blocked_missing_bounded_edit_mode'
+        }
+        $succeededResult = [pscustomobject]@{
+            status = 'succeeded'
+            result_status = 'succeeded'
+            result_reason_code = 'execution_completed'
+        }
+
+        [bool](Test-ResultCanAutoResolveContractViolation -ResultPacket $blockedResult) | Should Be $false
+        [bool](Test-ResultCanAutoResolveContractViolation -ResultPacket $succeededResult) | Should Be $true
+    }
+
+    It 'promotes nested run-task blocked materialization into result blocker status' {
+        $payload = [pscustomobject]@{
+            request_id = 'current-request'
+            task_id = 'current-task'
+            run_task = [pscustomobject]@{
+                decision = 'blocked'
+                execution_status = 'blocked'
+                reason_code = 'blocked_missing_bounded_edit_mode'
+                summary = 'TOD needs exactly one bounded target_file before LocalExecutionEngine can proceed.'
+            }
+        }
+
+        $blocker = Get-ExecutionPayloadBlocker -Payload $payload
+        $execution = [pscustomobject]@{
+            ok = $true
+            blocked = [bool]$blocker.blocked
+            payload_blocker = $blocker
+        }
+
+        [bool]$blocker.blocked | Should Be $true
+        [string]$blocker.reason_code | Should Be 'blocked_missing_bounded_edit_mode'
+        [string](Get-ResultReasonCode -Status 'blocked' -Execution $execution) | Should Be 'blocked_missing_bounded_edit_mode'
+    }
+
+    It 'asks MIM for a bounded implementation request over the existing channel when coordination is pending' {
+        $fixture = Join-Path $repoRoot ('tod/out/tests/packet-listener-coordination-dialog-' + [guid]::NewGuid().ToString('N'))
+        $statePath = Join-Path $fixture 'coordination_state.json'
+        $dialogScriptPath = Join-Path $fixture 'Invoke-TODMimDialog.ps1'
+        $envPath = Join-Path $fixture '.env'
+        $captured = [ordered]@{}
+
+        function global:Invoke-DialogNotice {
+            param(
+                [string]$ScriptAbs,
+                [string]$Action,
+                [string]$SessionId,
+                [string]$MessageType,
+                [string]$Intent,
+                [string]$Summary,
+                $Payload,
+                [string]$TaskId,
+                [string]$CorrelationId,
+                [string]$EnvPath,
+                [switch]$PublishRemote
+            )
+
+            $captured.ScriptAbs = $ScriptAbs
+            $captured.Action = $Action
+            $captured.SessionId = $SessionId
+            $captured.MessageType = $MessageType
+            $captured.Intent = $Intent
+            $captured.Summary = $Summary
+            $captured.Payload = $Payload
+            $captured.TaskId = $TaskId
+            $captured.CorrelationId = $CorrelationId
+            $captured.PublishRemote = [bool]$PublishRemote
+            return [pscustomobject]@{ ok = $true; status = 'sent' }
+        }
+
+        try {
+            New-Item -ItemType Directory -Path $fixture -Force | Out-Null
+            Set-Content -Path $dialogScriptPath -Value '# mock dialog script'
+            Set-Content -Path $envPath -Value ''
+            $state = [pscustomobject]@{
+                last_dialog_inquiry_at = ''
+                last_dialog_session_id = ''
+                dialog_inquiry_count = 0
+            }
+
+            $result = Publish-CoordinationPendingInquiry `
+                -CoordinationEscalationState $state `
+                -CoordinationEscalationStatePath $statePath `
+                -DialogScriptAbs $dialogScriptPath `
+                -EnvPath $envPath `
+                -RequestId 'mim-request-diagnostic' `
+                -ObjectiveId 'MIM-REQUEST-SHAPE-V1' `
+                -IssueCode 'runtime_contract_violation_result' `
+                -IssueSummary 'diagnostic request cannot be executed' `
+                -TimeoutSeconds 60 `
+                -ElapsedSeconds 83 `
+                -CoordinationRequest ([pscustomobject]@{ status = 'pending' }) `
+                -BridgeRuntime ([pscustomobject]@{ listener = [pscustomobject]@{ transport = 'ssh_sftp' } }) `
+                -PublishRemote:$false
+
+            [bool]$result.ok | Should Be $true
+            [string]$captured.MessageType | Should Be 'status_request'
+            [string]$captured.Intent | Should Be 'coordination_pending_timeout'
+            [string]$captured.Payload.owner | Should Be 'MIM'
+            [string]$captured.Payload.action | Should Match 'existing MIM/TOD task channel'
+            [string]$captured.Payload.action | Should Match 'do not create a new transport or SSH channel'
+            @($captured.Payload.required_fields) -contains 'target_file' | Should Be $true
+            @($captured.Payload.required_fields) -contains 'changed_files_required_for_success=true' | Should Be $true
+            @($captured.Payload.required_mim_response_fields) -contains 'dave_needed' | Should Be $true
+            @($captured.Payload.no_credit_if) -contains 'new SSH or transport channel proposed' | Should Be $true
+        }
+        finally {
+            Remove-Item Function:\Invoke-DialogNotice -ErrorAction SilentlyContinue
+            if (Test-Path -Path $fixture) {
+                Remove-Item -Path $fixture -Recurse -Force
+            }
+        }
     }
 
     It 'falls back to request sequence when the liveness trigger is a superseded wrapper' {
@@ -254,6 +402,143 @@ Describe 'TOD packet listener ordering hardening' {
 
             [string]$decision.reason_code | Should Not Be 'objective_mismatch'
             [string]$decision.canonical_objective_id | Should Be '2005'
+        }
+        finally {
+            if (-not [string]::IsNullOrWhiteSpace($mockTodScript) -and (Test-Path -Path $mockTodScript)) {
+                Remove-Item -Path $mockTodScript -Force
+            }
+        }
+    }
+
+    It 'allows a verified live implementation request when numeric objective authority is stale' {
+        $mockTodScript = New-MockTodScript
+        try {
+            $request = [pscustomobject]@{
+                request_id = 'mim-growth-communication-usefulness-next-v1-mim-request-ff7b84ac'
+                task_id = 'mim-growth-communication-usefulness-next-v1-mim-request-ff7b84ac'
+                objective_id = 'MIM-GROWTH-COMMUNICATION-USEFULNESS-NEXT-V1'
+                target = 'TOD'
+                task_class = 'implementation'
+                target_file = 'core/handoff_intake_service.py'
+                tod_action = 'execute-chat-task'
+            }
+            $integrationStatus = [pscustomobject]@{
+                objective_authority_reset = [pscustomobject]@{
+                    active = $false
+                }
+                objective_alignment = [pscustomobject]@{
+                    tod_current_objective = '181'
+                    mim_objective_active = '181'
+                }
+                live_task_request = [pscustomobject]@{
+                    request_id = 'mim-growth-communication-usefulness-next-v1-mim-request-ff7b84ac'
+                    task_id = 'mim-growth-communication-usefulness-next-v1-mim-request-ff7b84ac'
+                    normalized_objective_id = 'MIM-GROWTH-COMMUNICATION-USEFULNESS-NEXT-V1'
+                    promotion_applied = $false
+                }
+                bridge_canonical_evidence = [pscustomobject]@{
+                    remote_publish_verified = $true
+                    consumer_status = 'executed'
+                    failure_signals = @('live_task_request_objective_mismatch', 'live_task_request_task_mismatch', 'live_task_request_not_promoted')
+                }
+                bridge_operator_guidance = [pscustomobject]@{
+                    recommendation = 'continue_bounded_execution'
+                }
+            }
+
+            $decision = Get-MimRequestDecision -Request $request -GoOrder $null -IntegrationStatus $integrationStatus -ReviewDecision $null -TodScriptAbs $mockTodScript
+
+            [string]$decision.decision_outcome | Should Be 'execute'
+            [string]$decision.reason_code | Should Be 'authorized_routine_request'
+            [bool]$decision.live_request_promotion_applied | Should Be $true
+            @($decision.validation_reasoning | Where-Object { $_ -like 'live_request_authority_override:*' }).Count | Should Be 1
+        }
+        finally {
+            if (-not [string]::IsNullOrWhiteSpace($mockTodScript) -and (Test-Path -Path $mockTodScript)) {
+                Remove-Item -Path $mockTodScript -Force
+            }
+        }
+    }
+
+    It 'aligns per-cycle integration to a frozen executable request even after live task drift' {
+        $request = [pscustomobject]@{
+            request_id = 'wat-shuld-happen-befor-we-add-anothr-featre-mim-request-b5302fcc'
+            task_id = 'wat-shuld-happen-befor-we-add-anothr-featre-mim-request-b5302fcc'
+            objective_id = 'wat-shuld-happen-befor-we-add-anothr-featre'
+            task_class = 'implementation'
+            target_file = 'core/routers/gateway.py'
+            validation_only = $false
+        }
+        $integrationStatus = [pscustomobject]@{
+            compatible = $true
+            objective_alignment = [pscustomobject]@{
+                status = 'in_sync'
+                aligned = $true
+                tod_current_objective = '181'
+                mim_objective_active = '181'
+                mim_objective_source = 'handshake_packet'
+            }
+            live_task_request = [pscustomobject]@{
+                request_id = 'mim-growth-governance-integrity-next-v1-mim-request-05e7798d'
+                task_id = 'mim-growth-governance-integrity-next-v1-mim-request-05e7798d'
+                normalized_objective_id = 'MIM-GROWTH-GOVERNANCE-INTEGRITY-NEXT-V1'
+            }
+            bridge_canonical_evidence = [pscustomobject]@{
+                failure_signals = @('live_task_request_objective_mismatch', 'live_task_request_task_mismatch', 'live_task_request_not_promoted')
+            }
+        }
+
+        $aligned = Get-RequestAlignedIntegrationStatus -IntegrationStatus $integrationStatus -Request $request
+
+        [string]$aligned.objective_alignment.status | Should Be 'aligned'
+        [string]$aligned.objective_alignment.tod_current_objective | Should Be 'wat-shuld-happen-befor-we-add-anothr-featre'
+        [string]$aligned.objective_alignment.mim_objective_active | Should Be 'wat-shuld-happen-befor-we-add-anothr-featre'
+        [bool]$aligned.listener_alignment_override.applied | Should Be $true
+        [string]$aligned.listener_alignment_override.reason | Should Be 'frozen_executable_request_objective_used_for_result_contract'
+    }
+
+    It 'rejects stale bridge-recovery diagnostic wrappers that dropped bounded implementation fields' {
+        $mockTodScript = New-MockTodScript
+        try {
+            $request = [pscustomobject]@{
+                request_id = 'mim-growth-communication-usefulness-next-v1-mim-request-ff7b84ac-recover-trigger-ack-bridge-diagnostic'
+                task_id = 'mim-growth-communication-usefulness-next-v1-mim-request-ff7b84ac-recover-trigger-ack-bridge-diagnostic'
+                objective_id = 'MIM-GROWTH-COMMUNICATION-USEFULNESS-NEXT-V1'
+                target = 'TOD'
+                tod_action = 'execute-chat-task'
+                task_class = 'diagnostic_only'
+                objective_type = 'diagnostic_only'
+                validation_only = $true
+                source_selected_action_code = 'recover_trigger_ack_bridge'
+                source_selected_action_detail = 'Restart or recover the TOD listener bridge so TOD_TO_MIM_TRIGGER_ACK.latest.json mutates.'
+                target_file = ''
+            }
+            $integrationStatus = [pscustomobject]@{
+                objective_alignment = [pscustomobject]@{
+                    tod_current_objective = 'MIM-GROWTH-COMMUNICATION-USEFULNESS-NEXT-V1'
+                }
+                live_task_request = [pscustomobject]@{
+                    request_id = 'mim-growth-communication-usefulness-next-v1-mim-request-ff7b84ac-recover-trigger-ack-bridge-diagnostic'
+                    normalized_objective_id = 'MIM-GROWTH-COMMUNICATION-USEFULNESS-NEXT-V1'
+                    promotion_applied = $true
+                }
+                bridge_canonical_evidence = [pscustomobject]@{
+                    remote_publish_verified = $true
+                    consumer_status = 'executed'
+                    failure_signals = @()
+                }
+                bridge_operator_guidance = [pscustomobject]@{
+                    recommendation = 'continue_bounded_execution'
+                }
+            }
+
+            $decision = Get-MimRequestDecision -Request $request -GoOrder $null -IntegrationStatus $integrationStatus -ReviewDecision $null -TodScriptAbs $mockTodScript
+
+            [string]$decision.decision_outcome | Should Be 'reject_with_specific_policy_reason'
+            [string]$decision.reason_code | Should Be 'diagnostic_wrapper_missing_bounded_implementation_packet'
+            [string]$decision.unmet_dependency | Should Be 'bounded_implementation_packet'
+            @($decision.required_fields) -contains 'target_file' | Should Be $true
+            [bool]$decision.requires_human | Should Be $false
         }
         finally {
             if (-not [string]::IsNullOrWhiteSpace($mockTodScript) -and (Test-Path -Path $mockTodScript)) {
@@ -612,6 +897,152 @@ Describe 'TOD packet listener ordering hardening' {
         }
     }
 
+    It 'rejects system-alert diagnostic wrappers that replace bounded implementation fields' {
+        $mockTodScript = New-MockTodScript
+        try {
+            $request = [pscustomobject]@{
+                request_id = 'mim-growth-strategic-prioritization-next-v1-mim-request-9780fc20-acknowledge-and-remediate-system-alerts-diagnostic'
+                task_id = 'mim-growth-strategic-prioritization-next-v1-mim-request-9780fc20-acknowledge-and-remediate-system-alerts-diagnostic'
+                objective_id = 'MIM-GROWTH-STRATEGIC-PRIORITIZATION-NEXT-V1'
+                target = 'TOD'
+                tod_action = 'execute-chat-task'
+                task_class = 'diagnostic_only'
+                objective_type = 'diagnostic_only'
+                validation_only = $true
+                source_selected_action_code = 'acknowledge_and_remediate_system_alerts'
+                source_selected_action_detail = 'Resolve critical system alert catchup_gate_blocked before continuing dispatch.'
+                source_blocking_reason_codes = @('catchup_gate_blocked', 'system_alert_critical', 'trigger_ack_not_current', 'handoff_only_success_missing_current_execution_evidence')
+                target_file = ''
+            }
+            $integrationStatus = [pscustomobject]@{
+                objective_alignment = [pscustomobject]@{
+                    tod_current_objective = 'MIM-GROWTH-STRATEGIC-PRIORITIZATION-NEXT-V1'
+                }
+                live_task_request = [pscustomobject]@{
+                    request_id = 'mim-growth-strategic-prioritization-next-v1-mim-request-9780fc20-acknowledge-and-remediate-system-alerts-diagnostic'
+                    normalized_objective_id = 'MIM-GROWTH-STRATEGIC-PRIORITIZATION-NEXT-V1'
+                    promotion_applied = $true
+                }
+                bridge_canonical_evidence = [pscustomobject]@{
+                    remote_publish_verified = $true
+                    consumer_status = 'executed'
+                    failure_signals = @()
+                }
+                bridge_operator_guidance = [pscustomobject]@{
+                    recommendation = 'continue_bounded_execution'
+                }
+            }
+
+            $decision = Get-MimRequestDecision -Request $request -GoOrder $null -IntegrationStatus $integrationStatus -ReviewDecision $null -TodScriptAbs $mockTodScript
+
+            [string]$decision.decision_outcome | Should Be 'reject_with_specific_policy_reason'
+            [string]$decision.reason_code | Should Be 'diagnostic_wrapper_missing_bounded_implementation_packet'
+            [string]$decision.next_step_recommendation | Should Be 'preserve_or_republish_existing_channel_bounded_implementation_request'
+            @($decision.validation_reasoning | Where-Object { $_ -eq 'system_alert_diagnostic_wrapper_missing_bounded_packet' }).Count | Should Be 1
+            [bool]$decision.requires_human | Should Be $false
+        }
+        finally {
+            if (-not [string]::IsNullOrWhiteSpace($mockTodScript) -and (Test-Path -Path $mockTodScript)) {
+                Remove-Item -Path $mockTodScript -Force
+            }
+        }
+    }
+
+    It 'rejects system-alert diagnostic wrappers even when task_class was dropped' {
+        $mockTodScript = New-MockTodScript
+        try {
+            $request = [pscustomobject]@{
+                request_id = 'mim-growth-strategic-prioritization-next-v1-mim-request-9780fc20-acknowledge-and-remediate-system-alerts-diagnostic'
+                task_id = 'mim-growth-strategic-prioritization-next-v1-mim-request-9780fc20-acknowledge-and-remediate-system-alerts-diagnostic'
+                objective_id = 'MIM-GROWTH-STRATEGIC-PRIORITIZATION-NEXT-V1'
+                target = 'TOD'
+                tod_action = 'execute-chat-task'
+                target_file = ''
+                summary = 'Classify this selected MIM action, inspect the current evidence, and perform only the smallest safe diagnostic follow-through. Do not patch unless a bounded approved patch packet with target_files, patch_type, minimal_patch_plan, and validation_plan is present.'
+            }
+            $integrationStatus = [pscustomobject]@{
+                objective_alignment = [pscustomobject]@{
+                    tod_current_objective = 'MIM-GROWTH-STRATEGIC-PRIORITIZATION-NEXT-V1'
+                }
+                live_task_request = [pscustomobject]@{
+                    request_id = 'mim-growth-strategic-prioritization-next-v1-mim-request-9780fc20-acknowledge-and-remediate-system-alerts-diagnostic'
+                    normalized_objective_id = 'MIM-GROWTH-STRATEGIC-PRIORITIZATION-NEXT-V1'
+                    promotion_applied = $true
+                }
+                bridge_canonical_evidence = [pscustomobject]@{
+                    remote_publish_verified = $true
+                    consumer_status = 'executed'
+                    failure_signals = @()
+                }
+                bridge_operator_guidance = [pscustomobject]@{
+                    recommendation = 'continue_bounded_execution'
+                }
+            }
+
+            $decision = Get-MimRequestDecision -Request $request -GoOrder $null -IntegrationStatus $integrationStatus -ReviewDecision $null -TodScriptAbs $mockTodScript
+
+            [string]$decision.decision_outcome | Should Be 'reject_with_specific_policy_reason'
+            [string]$decision.reason_code | Should Be 'diagnostic_wrapper_missing_bounded_implementation_packet'
+            @($decision.validation_reasoning | Where-Object { $_ -eq 'system_alert_diagnostic_wrapper_missing_bounded_packet' }).Count | Should Be 1
+            [bool]$decision.requires_human | Should Be $false
+        }
+        finally {
+            if (-not [string]::IsNullOrWhiteSpace($mockTodScript) -and (Test-Path -Path $mockTodScript)) {
+                Remove-Item -Path $mockTodScript -Force
+            }
+        }
+    }
+
+    It 'rejects blocked-result closure diagnostic wrappers that replace bounded implementation fields' {
+        $mockTodScript = New-MockTodScript
+        try {
+            $request = [pscustomobject]@{
+                request_id = 'mim-growth-project-continuity-next-v1-mim-request-7884ba31-blocked-result-closure-diagnostic'
+                task_id = 'mim-growth-project-continuity-next-v1-mim-request-7884ba31-blocked-result-closure-diagnostic'
+                objective_id = 'MIM-GROWTH-PROJECT-CONTINUITY-NEXT-V1'
+                target = 'TOD'
+                tod_action = 'execute-chat-task'
+                task_class = 'diagnostic_only'
+                objective_type = 'diagnostic_only'
+                validation_only = $true
+                source_selected_action_code = 'resolve_blocked_task_result'
+                source_selected_action_detail = 'TOD published a blocked result for the active task; close or repair the lane instead of monitor_only.'
+                target_file = ''
+            }
+            $integrationStatus = [pscustomobject]@{
+                objective_alignment = [pscustomobject]@{
+                    tod_current_objective = 'MIM-GROWTH-PROJECT-CONTINUITY-NEXT-V1'
+                }
+                live_task_request = [pscustomobject]@{
+                    request_id = 'mim-growth-project-continuity-next-v1-mim-request-7884ba31-blocked-result-closure-diagnostic'
+                    normalized_objective_id = 'MIM-GROWTH-PROJECT-CONTINUITY-NEXT-V1'
+                    promotion_applied = $true
+                }
+                bridge_canonical_evidence = [pscustomobject]@{
+                    remote_publish_verified = $true
+                    consumer_status = 'executed'
+                    failure_signals = @()
+                }
+                bridge_operator_guidance = [pscustomobject]@{
+                    recommendation = 'continue_bounded_execution'
+                }
+            }
+
+            $decision = Get-MimRequestDecision -Request $request -GoOrder $null -IntegrationStatus $integrationStatus -ReviewDecision $null -TodScriptAbs $mockTodScript
+
+            [string]$decision.decision_outcome | Should Be 'reject_with_specific_policy_reason'
+            [string]$decision.reason_code | Should Be 'diagnostic_wrapper_missing_bounded_implementation_packet'
+            [string]$decision.next_step_recommendation | Should Be 'preserve_bounded_request_or_publish_inspected_anchor_blocker'
+            @($decision.validation_reasoning | Where-Object { $_ -eq 'blocked_result_closure_wrapper_missing_bounded_packet' }).Count | Should Be 1
+            [bool]$decision.requires_human | Should Be $false
+        }
+        finally {
+            if (-not [string]::IsNullOrWhiteSpace($mockTodScript) -and (Test-Path -Path $mockTodScript)) {
+                Remove-Item -Path $mockTodScript -Force
+            }
+        }
+    }
+
     It 'publishes a listener-owned execution lock for the active task' {
         $fixture = Join-Path $repoRoot ('tod/out/tests/packet-listener-execution-lock-' + [guid]::NewGuid().ToString('N'))
         $executionLockPath = Join-Path $fixture 'TOD_EXECUTION_LOCK.latest.json'
@@ -657,6 +1088,76 @@ Describe 'TOD packet listener ordering hardening' {
             Publish-CommandStatus -ListenerState $listenerState -ListenerStatePath $listenerStatePath -LocalPath $commandStatusPath -Status 'accepted' -Detail 'Task ACK emitted to shared path.' -RequestId 'objective-2913-task-7144' -TaskId 'objective-2913-task-7144' -CorrelationId 'objective-2913-task-7144' -BridgeRuntime $bridgeRuntime
 
             (Test-Path -Path $commandStatusPath) | Should Be $false
+        }
+        finally {
+            if (Test-Path -Path $fixture) {
+                Remove-Item -Path $fixture -Recurse -Force
+            }
+        }
+    }
+
+    It 'allows command-status writes when the bridge runtime points at a coordination wrapper for the same active task' {
+        $fixture = Join-Path $repoRoot ('tod/out/tests/packet-listener-coordination-wrapper-lineage-' + [guid]::NewGuid().ToString('N'))
+        $listenerStatePath = Join-Path $fixture 'listener_state.json'
+        $commandStatusPath = Join-Path $fixture 'TOD_MIM_COMMAND_STATUS.latest.json'
+        $listenerState = [pscustomobject]@{}
+        $bridgeRuntime = [pscustomobject]@{
+            current_processing = [pscustomobject]@{
+                task_id = 'coordination-mim-tod-request-shape-recovery-20260714-blocked-missing-target-file'
+                correlation_id = 'coordination-mim-tod-request-shape-recovery-20260714-blocked-missing-target-file'
+            }
+        }
+
+        try {
+            Publish-CommandStatus -ListenerState $listenerState -ListenerStatePath $listenerStatePath -LocalPath $commandStatusPath -Status 'already_processed' -Detail 'MIM command was received, matched the last processed request signature, and was intentionally deduplicated.' -RequestId 'mim-growth-request-diagnostic' -TaskId 'mim-growth-request-diagnostic' -CorrelationId 'mim-growth-request-diagnostic' -BridgeRuntime $bridgeRuntime
+
+            $status = Get-Content -Raw -Path $commandStatusPath | ConvertFrom-Json
+
+            [string]$status.status | Should Be 'already_processed'
+            @($status.lineage_warnings).Count | Should Be 2
+            [string]$status.task_id | Should Be 'mim-growth-request-diagnostic'
+        }
+        finally {
+            if (Test-Path -Path $fixture) {
+                Remove-Item -Path $fixture -Recurse -Force
+            }
+        }
+    }
+
+    It 'allows execution-decision writes when the bridge runtime points at a coordination wrapper for the same active task' {
+        $fixture = Join-Path $repoRoot ('tod/out/tests/packet-listener-decision-coordination-wrapper-lineage-' + [guid]::NewGuid().ToString('N'))
+        $decisionPath = Join-Path $fixture 'TOD_MIM_EXECUTION_DECISION.latest.json'
+        $bridgeRuntime = [pscustomobject]@{
+            current_processing = [pscustomobject]@{
+                task_id = 'coordination-mim-tod-request-shape-recovery-20260714-blocked-missing-target-file'
+                correlation_id = 'coordination-mim-tod-request-shape-recovery-20260714-blocked-missing-target-file'
+            }
+        }
+        $decisionPayload = [pscustomobject]@{
+            decision_outcome = 'reject_with_specific_policy_reason'
+            reason_code = 'diagnostic_wrapper_missing_bounded_implementation_packet'
+            summary = 'MIM must republish a bounded implementation-shaped request.'
+            boundary_class = 'soft_boundary'
+            requested_executor = 'tod'
+            requested_objective_id = 'MIM-GROWTH-COMMUNICATION-USEFULNESS-NEXT-V1'
+            canonical_objective_id = 'MIM-GROWTH-COMMUNICATION-USEFULNESS-NEXT-V1'
+            live_request_promotion_applied = $true
+            unmet_dependency = 'bounded_implementation_packet'
+            blocker_classification = 'request_shape_rejection'
+            next_step_recommendation = 'republish_existing_channel_bounded_implementation_request'
+            requires_human = $false
+            validation_reasoning = @('recover_trigger_ack_bridge_wrapper_missing_bounded_packet')
+        }
+
+        try {
+            Publish-ExecutionDecision -LocalPath $decisionPath -DecisionPayload $decisionPayload -RequestId 'mim-growth-request-diagnostic' -TaskId 'mim-growth-request-diagnostic' -CorrelationId 'mim-growth-request-diagnostic' -BridgeRuntime $bridgeRuntime
+
+            $decision = Get-Content -Raw -Path $decisionPath | ConvertFrom-Json
+
+            [string]$decision.decision_outcome | Should Be 'reject_with_specific_policy_reason'
+            [string]$decision.reason_code | Should Be 'diagnostic_wrapper_missing_bounded_implementation_packet'
+            @($decision.lineage_warnings).Count | Should Be 2
+            [string]$decision.task_id | Should Be 'mim-growth-request-diagnostic'
         }
         finally {
             if (Test-Path -Path $fixture) {
