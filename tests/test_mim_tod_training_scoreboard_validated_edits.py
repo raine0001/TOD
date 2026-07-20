@@ -18,6 +18,692 @@ def load_scoreboard_module():
 
 
 class ValidatedTodEditLedgerTests(unittest.TestCase):
+    def test_operator_impact_markdown_distinguishes_scored_from_passing_replies(self):
+        module = load_scoreboard_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "scoreboard.md"
+            scoreboard = {
+                "generated_at": "2026-07-14T02:10:00Z",
+                "status": "needs_attention",
+                "training_hours": {
+                    "last_7_days": {"value": None, "status": "baseline_needed"},
+                    "yesterday": {"value": None, "status": "baseline_needed"},
+                    "today": {"value": None, "status": "baseline_needed"},
+                },
+                "outcome_reflection": {},
+                "judgment_mode_score": {},
+                "mim_score": {
+                    "metrics": {},
+                    "operator_impact": {
+                        "status": "measured_contract_fields",
+                        "operator_impact_score": 7.0,
+                        "operator_impact_percent": 70,
+                        "pass_count": 4,
+                        "sample_count": 10,
+                        "generated_at": "2026-07-14T01:49:48Z",
+                        "source": "MIM_OPERATOR_IMPACT_SCORECARD.latest.json",
+                    },
+                },
+                "tod_score": {
+                    "metrics": {},
+                    "latest_drill": {},
+                },
+                "recommendation": {
+                    "continue_training": True,
+                    "next_required_improvement": "repair operator-impact scoring clarity",
+                },
+            }
+
+            module.write_markdown(scoreboard, path)
+
+            rendered = path.read_text(encoding="utf-8")
+            self.assertIn("- Replies scored: 10", rendered)
+            self.assertIn("- Fully passing replies: 4/10", rendered)
+            self.assertNotIn("- Replies scored: 4/10", rendered)
+
+    def test_pending_deploy_markdown_shows_acceptance_and_proof_steps(self):
+        module = load_scoreboard_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "scoreboard.md"
+            scoreboard = {
+                "generated_at": "2026-07-14T03:30:00Z",
+                "status": "needs_attention",
+                "training_hours": {
+                    "last_7_days": {"value": None, "status": "baseline_needed"},
+                    "yesterday": {"value": None, "status": "baseline_needed"},
+                    "today": {"value": None, "status": "baseline_needed"},
+                },
+                "outcome_reflection": {},
+                "judgment_mode_score": {},
+                "mim_score": {"metrics": {}, "operator_impact": {}},
+                "tod_score": {
+                    "metrics": {},
+                    "latest_drill": {},
+                    "deploy_payloads": {
+                        "pending_count": 1,
+                        "latest": {
+                            "objective_id": "MIM-STALE-REMEDIATION-MATERIALIZATION-V1",
+                            "file": "runtime_remote_training/deploy_payloads/materialization.json",
+                            "purpose": "Materialize stale remediation into a bounded request.",
+                            "verification_status": "not_verified",
+                            "verification_reason": "current live task request is not implementation-shaped",
+                            "local_reference_files": ["tmp_remote_mim/core/autonomy_driver_service.py"],
+                            "local_patch_readiness": {
+                                "status": "local_reference_ready",
+                                "ready": True,
+                                "checked": [
+                                    {
+                                        "path": "tmp_remote_mim/core/autonomy_driver_service.py",
+                                        "exists": True,
+                                    }
+                                ],
+                                "missing": [],
+                            },
+                            "target_remote_files": ["/home/testpilot/mim/core/autonomy_driver_service.py"],
+                            "acceptance": [
+                                "MIM no longer stops at an internal proposed_remediation_task.",
+                            ],
+                            "post_deploy_commands": [
+                                "Verify /home/testpilot/mim/runtime/shared/MIM_TOD_TASK_REQUEST.latest.json has task_class=implementation",
+                            ],
+                        },
+                        "pending_payloads": [],
+                    },
+                    "deploy_application_result": {
+                        "objective_id": "MIM-STALE-REMEDIATION-MATERIALIZATION-V1",
+                        "status": "full_file_payload_applied_post_deploy_test_passed",
+                        "applied_file_count": 2,
+                        "no_new_channel_required": True,
+                        "live_request_emitted": False,
+                        "live_deployment_verified": False,
+                        "remaining_blockers": [
+                            "Fresh MIM_TOD_TASK_REQUEST.latest.json has not yet been emitted as implementation-shaped.",
+                        ],
+                    },
+                },
+                "recommendation": {
+                    "continue_training": True,
+                    "next_required_improvement": "prove bounded remediation materialization",
+                },
+            }
+
+            module.write_markdown(scoreboard, path)
+
+            rendered = path.read_text(encoding="utf-8")
+            self.assertIn("Latest acceptance gates", rendered)
+            self.assertIn("MIM no longer stops at an internal proposed_remediation_task", rendered)
+            self.assertIn("Local patch readiness: local_reference_ready", rendered)
+            self.assertIn("tmp_remote_mim/core/autonomy_driver_service.py", rendered)
+            self.assertIn("Latest deploy application result", rendered)
+            self.assertIn("full_file_payload_applied_post_deploy_test_passed", rendered)
+            self.assertIn("Live request emitted: false", rendered)
+            self.assertIn("Latest post-deploy proof steps", rendered)
+            self.assertIn("task_class=implementation", rendered)
+
+    def test_deploy_verification_queue_names_owner_and_next_proof(self):
+        module = load_scoreboard_module()
+        scoreboard = {
+            "tod_score": {
+                "deploy_payloads": {
+                    "pending_payloads": [
+                        {
+                            "objective_id": "MIM-STALE-REMEDIATION-MATERIALIZATION-V1",
+                            "file": "runtime_remote_training/deploy_payloads/materialization.json",
+                            "verification_status": "not_verified",
+                            "verification_reason": "current live task request is not implementation-shaped",
+                            "local_patch_readiness": {
+                                "status": "local_reference_ready",
+                                "ready": True,
+                            },
+                            "application_plan": {
+                                "status": "ready_for_existing_send_script",
+                                "ready": True,
+                            },
+                            "post_deploy_commands": [
+                                "Verify /home/testpilot/mim/runtime/shared/MIM_TOD_TASK_REQUEST.latest.json has task_class=implementation",
+                            ],
+                        },
+                        {
+                            "objective_id": "MIM-CONVERSATION-MODE-SELECTION-V2",
+                            "file": "runtime_remote_training/deploy_payloads/conversation.json",
+                            "verification_status": "not_verified",
+                            "verification_reason": "operator impact score is still 7.0/10",
+                            "post_deploy_commands": [
+                                "python tools/score_mim_operator_impact_live_10.py",
+                            ],
+                        },
+                    ]
+                }
+            }
+        }
+
+        queue = module.build_deploy_verification_queue(scoreboard)
+
+        self.assertEqual("needs_verification", queue["status"])
+        self.assertEqual(2, queue["pending_count"])
+        self.assertIn("bridge_state", queue)
+        self.assertTrue(queue["bridge_state"]["no_new_channel_required"])
+        item = queue["items"][0]
+        self.assertEqual("MIM-STALE-REMEDIATION-MATERIALIZATION-V1", item["objective_id"])
+        self.assertIn("MIM deploy/runtime owner", item["owner"])
+        self.assertIn("no unless credentials", item["dave_needed"])
+        self.assertIn("task_class=implementation", item["next_proof"])
+        self.assertEqual("local_reference_ready", item["local_patch_readiness"]["status"])
+        self.assertEqual("ready_for_existing_send_script", item["application_plan"]["status"])
+        self.assertIn("new SSH or transport channel is proposed", item["no_credit_if"])
+        conversation = queue["items"][1]
+        self.assertEqual("MIM-CONVERSATION-MODE-SELECTION-V2", conversation["objective_id"])
+        self.assertIn("operator-impact and durability scorers", conversation["owner"])
+
+    def test_deploy_verification_queue_markdown_is_written(self):
+        module = load_scoreboard_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp)
+            queue = {
+                "artifact_type": "mim_tod_deploy_verification_queue_v1",
+                "generated_at": "2026-07-14T03:45:00Z",
+                "status": "needs_verification",
+                "pending_count": 1,
+                "bridge_state": {
+                    "status": "existing_bridge_active_materialization_blocked",
+                    "transport": "existing managed listener over shared MIM_TOD_TASK_REQUEST.latest.json",
+                    "transport_active": True,
+                    "no_new_channel_required": True,
+                    "blocker": "request_materialization_missing_bounded_edit_fields",
+                    "required_next_action": "Deploy the pending MIM materializer repair through the existing source/deploy path; do not add another SSH channel or transport.",
+                    "current_request": {
+                        "task_class": "diagnostic_only",
+                        "validation_only": True,
+                        "changed_files_required_for_success": False,
+                        "target_file": "",
+                        "target_files_type": "missing",
+                        "one_target_file": False,
+                    },
+                    "request_copies": [
+                        {
+                            "source": "listener",
+                            "implementation_shaped": False,
+                            "task_class": "diagnostic_only",
+                            "target_file": "",
+                            "one_target_file": False,
+                            "malformed_reasons": [
+                                "task_class=diagnostic_only",
+                                "validation_only=true",
+                                "changed_files_required_for_success=false",
+                                "one_target_file=false",
+                            ],
+                        }
+                    ],
+                },
+                "items": [
+                    {
+                        "rank": 1,
+                        "objective_id": "MIM-STALE-REMEDIATION-MATERIALIZATION-V1",
+                        "status": "not_verified",
+                        "reason": "current live task request is not implementation-shaped",
+                        "deploy_payload": "runtime_remote_training/deploy_payloads/materialization.json",
+                        "owner": "MIM deploy/runtime owner first; TOD validates execution evidence after the live request is implementation-shaped.",
+                        "dave_needed": "no unless credentials are required.",
+                        "next_proof": "Verify task_class=implementation",
+                        "local_patch_readiness": {
+                            "status": "local_reference_ready",
+                            "ready": True,
+                        },
+                        "application_plan": {
+                            "status": "ready_for_existing_send_script",
+                            "ready": True,
+                        },
+                        "acceptance": ["MIM no longer stops at proposal."],
+                        "proof_steps": ["Verify task_class=implementation"],
+                    }
+                ],
+            }
+
+            paths = module.write_deploy_verification_queue(queue, out_dir)
+
+            self.assertTrue(Path(paths["json"]).exists())
+            rendered = Path(paths["md"]).read_text(encoding="utf-8")
+            self.assertIn("MIM/TOD Deploy Verification Queue", rendered)
+            self.assertIn("Existing Bridge State", rendered)
+            self.assertIn("No new channel required: true", rendered)
+            self.assertIn("request_materialization_missing_bounded_edit_fields", rendered)
+            self.assertIn("Current target: target_file=missing; one_target_file=false", rendered)
+            self.assertIn("Request Copies", rendered)
+            self.assertIn("listener: implementation_shaped=false", rendered)
+            self.assertIn("Local patch readiness: local_reference_ready", rendered)
+            self.assertIn("Existing deploy path application: ready_for_existing_send_script", rendered)
+            self.assertIn("MIM-STALE-REMEDIATION-MATERIALIZATION-V1", rendered)
+            self.assertIn("Verify task_class=implementation", rendered)
+
+    def test_task_request_shape_rejects_empty_target_bounded_request(self):
+        module = load_scoreboard_module()
+        shape = module.task_request_shape_snapshot(
+            {
+                "task_class": "implementation",
+                "validation_only": False,
+                "bounded_edit_mode": True,
+                "target_file": "",
+                "target_files": {},
+                "completion_gate": {"changed_files_required_for_success": True},
+            }
+        )
+
+        self.assertFalse(shape["implementation_shaped"])
+        self.assertFalse(shape["one_target_file"])
+        self.assertIn("one_target_file=false", shape["malformed_reasons"])
+        self.assertIn("target_files_type=dict", shape["malformed_reasons"])
+
+    def test_pending_deploy_payload_snapshot_counts_unverified_handoffs(self):
+        module = load_scoreboard_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            deploy_root = root / "runtime_remote_training" / "deploy_payloads"
+            deploy_root.mkdir(parents=True)
+            (deploy_root / "pending.json").write_text(
+                json.dumps(
+                    {
+                        "artifact_type": "deploy_patch_handoff",
+                        "generated_at": "2026-07-14T01:58:00Z",
+                        "objective_id": "MIM-TOD-REMEDIATION-DISPATCH-BOUNDED-ACTION-V1",
+                        "purpose": "Convert dispatch_remediation_task into bounded implementation dispatch.",
+                        "local_reference_files": ["tmp_remote_mim/core/bounded_action_registry.py"],
+                        "target_remote_files": ["/home/testpilot/mim/core/bounded_action_registry.py"],
+                        "acceptance": ["MIM no longer produces diagnostic-only packets."],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (deploy_root / "verified.json").write_text(
+                json.dumps(
+                    {
+                        "artifact_type": "deploy_patch_handoff",
+                        "generated_at": "2026-07-13T20:00:00Z",
+                        "objective_id": "DONE",
+                        "status": "deployed_and_verified",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            module.ROOT = root
+            module.TRAINING_ROOT = root / "runtime_remote_training"
+            module.DEPLOY_PAYLOADS_ROOT = deploy_root
+            module.CONTEXT_SYNC_ROOT = root / "tod" / "out" / "context-sync"
+            module.RUNTIME_SHARED_ROOT = root / "runtime" / "shared"
+            local_ref = root / "tmp_remote_mim" / "core" / "bounded_action_registry.py"
+            local_ref.parent.mkdir(parents=True)
+            local_ref.write_text("# local reference\n", encoding="utf-8")
+
+            snapshot = module.pending_deploy_payload_snapshot()
+
+            self.assertEqual(1, snapshot["pending_count"])
+            self.assertEqual("MIM-TOD-REMEDIATION-DISPATCH-BOUNDED-ACTION-V1", snapshot["latest"]["objective_id"])
+            self.assertEqual(["/home/testpilot/mim/core/bounded_action_registry.py"], snapshot["latest"]["target_remote_files"])
+            self.assertEqual("local_reference_ready", snapshot["latest"]["local_patch_readiness"]["status"])
+            self.assertTrue(snapshot["latest"]["local_patch_readiness"]["ready"])
+            self.assertEqual("ready_for_existing_send_script", snapshot["latest"]["application_plan"]["status"])
+            self.assertIn("scripts\\Send-TODMimScript.ps1", snapshot["latest"]["application_plan"]["apply_commands"][0])
+            self.assertIn("/home/testpilot/mim/core/bounded_action_registry.py", snapshot["latest"]["application_plan"]["apply_commands"][0])
+
+    def test_pending_deploy_payload_snapshot_explains_unverified_live_evidence(self):
+        module = load_scoreboard_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            training_root = root / "runtime_remote_training"
+            deploy_root = training_root / "deploy_payloads"
+            context_root = root / "tod" / "out" / "context-sync"
+            deploy_root.mkdir(parents=True)
+            (deploy_root / "conversation.json").write_text(
+                json.dumps(
+                    {
+                        "artifact_type": "deploy_patch_handoff",
+                        "generated_at": "2026-07-13T23:40:00Z",
+                        "objective_id": "MIM-CONVERSATION-MODE-SELECTION-V2",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (deploy_root / "remediation.json").write_text(
+                json.dumps(
+                    {
+                        "artifact_type": "deploy_patch_handoff",
+                        "generated_at": "2026-07-14T01:58:00Z",
+                        "objective_id": "MIM-TOD-REMEDIATION-DISPATCH-BOUNDED-ACTION-V1",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (deploy_root / "stale_remediation.json").write_text(
+                json.dumps(
+                    {
+                        "artifact_type": "deploy_patch_handoff",
+                        "generated_at": "2026-07-14T03:30:00Z",
+                        "objective_id": "MIM-STALE-REMEDIATION-MATERIALIZATION-V1",
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (training_root / "MIM_OPERATOR_IMPACT_SCORECARD.latest.json").write_text(
+                json.dumps(
+                    {
+                        "operator_impact_score": 7.0,
+                        "pass_count": 4,
+                        "sample_count": 10,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            listener_root = context_root / "listener"
+            listener_root.mkdir(parents=True)
+            (listener_root / "MIM_TOD_TASK_REQUEST.latest.json").write_text(
+                json.dumps(
+                    {
+                        "task_class": "diagnostic_only",
+                        "validation_only": True,
+                        "completion_gate": {
+                            "changed_files_required_for_success": False,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            module.ROOT = root
+            module.TRAINING_ROOT = training_root
+            module.DEPLOY_PAYLOADS_ROOT = deploy_root
+            module.CONTEXT_SYNC_ROOT = context_root
+            module.RUNTIME_SHARED_ROOT = root / "runtime" / "shared"
+
+            snapshot = module.pending_deploy_payload_snapshot()
+
+            by_objective = {
+                item["objective_id"]: item
+                for item in snapshot["pending_payloads"]
+            }
+            conversation = by_objective["MIM-CONVERSATION-MODE-SELECTION-V2"]
+            remediation = by_objective["MIM-TOD-REMEDIATION-DISPATCH-BOUNDED-ACTION-V1"]
+            stale_remediation = by_objective["MIM-STALE-REMEDIATION-MATERIALIZATION-V1"]
+            self.assertEqual("not_verified", conversation["verification_status"])
+            self.assertIn("7.0/10", conversation["verification_reason"])
+            self.assertEqual("not_verified", remediation["verification_status"])
+            self.assertIn("task_class=diagnostic_only", remediation["verification_reason"])
+            self.assertEqual("not_verified", stale_remediation["verification_status"])
+            self.assertIn("task_class=diagnostic_only", stale_remediation["verification_reason"])
+
+    def test_partial_hunk_deploy_payload_does_not_generate_full_file_send_command(self):
+        module = load_scoreboard_module()
+        plan = module.deploy_file_application_plan(
+            ["tmp_remote_mim/core/routers/studio.py"],
+            ["/home/testpilot/mim/core/routers/studio.py"],
+            {
+                "warning": "Do not upload the whole local reference file. Apply only the route-order hunk.",
+            },
+        )
+
+        self.assertEqual("partial_patch_hunk_required", plan["status"])
+        self.assertFalse(plan["ready"])
+        self.assertTrue(plan["partial_patch_required"])
+        self.assertEqual([], plan["apply_commands"])
+        self.assertIn("full-file Send-TODMimScript upload is intentionally withheld", plan["note"])
+
+    def test_deploy_application_manifest_uses_existing_send_script(self):
+        module = load_scoreboard_module()
+        queue = {
+            "bridge_state": {
+                "status": "existing_bridge_active_materialization_blocked",
+                "no_new_channel_required": True,
+            },
+            "items": [
+                {
+                    "rank": 1,
+                    "objective_id": "MIM-STALE-REMEDIATION-MATERIALIZATION-V1",
+                    "deploy_payload": "runtime_remote_training/deploy_payloads/materialization.json",
+                    "status": "not_verified",
+                    "reason": "current live task request is not implementation-shaped",
+                    "proof_steps": ["Verify task_class=implementation"],
+                    "application_plan": {
+                        "status": "ready_for_existing_send_script",
+                        "ready": True,
+                        "pairs": [
+                            {
+                                "local_path": "tmp_remote_mim/core/autonomy_driver_service.py",
+                                "remote_path": "/home/testpilot/mim/core/autonomy_driver_service.py",
+                                "local_exists": True,
+                                "sha256": "abc",
+                                "size_bytes": 10,
+                                "apply_command": "powershell -NoProfile -File scripts\\Send-TODMimScript.ps1 -LocalPath 'tmp_remote_mim/core/autonomy_driver_service.py' -RemotePath '/home/testpilot/mim/core/autonomy_driver_service.py'",
+                            }
+                        ],
+                        "apply_commands": [
+                            "powershell -NoProfile -File scripts\\Send-TODMimScript.ps1 -LocalPath 'tmp_remote_mim/core/autonomy_driver_service.py' -RemotePath '/home/testpilot/mim/core/autonomy_driver_service.py'",
+                        ],
+                    },
+                }
+            ],
+        }
+
+        manifest = module.build_deploy_application_manifest(queue)
+
+        self.assertEqual("ready_to_apply_existing_path", manifest["status"])
+        self.assertTrue(manifest["no_new_channel_required"])
+        self.assertEqual("scripts\\Send-TODMimScript.ps1", manifest["existing_apply_script"])
+        self.assertIn("Send-TODMimScript.ps1", manifest["items"][0]["apply_commands"][0])
+        self.assertIn("does not award TOD independent-resolution credit", manifest["credit_policy"])
+
+    def test_deploy_application_manifest_reports_ready_with_partial_hunks(self):
+        module = load_scoreboard_module()
+        queue = {
+            "bridge_state": {
+                "status": "existing_bridge_active_materialization_blocked",
+                "no_new_channel_required": True,
+            },
+            "items": [
+                {
+                    "rank": 1,
+                    "objective_id": "MIM-STALE-REMEDIATION-MATERIALIZATION-V1",
+                    "application_plan": {
+                        "status": "ready_for_existing_send_script",
+                        "ready": True,
+                        "pairs": [
+                            {
+                                "local_path": "tmp_remote_mim/core/autonomy_driver_service.py",
+                                "remote_path": "/home/testpilot/mim/core/autonomy_driver_service.py",
+                                "apply_command": "powershell -NoProfile -File scripts\\Send-TODMimScript.ps1 -LocalPath 'a' -RemotePath 'b'",
+                            }
+                        ],
+                        "apply_commands": [
+                            "powershell -NoProfile -File scripts\\Send-TODMimScript.ps1 -LocalPath 'a' -RemotePath 'b'",
+                        ],
+                    },
+                },
+                {
+                    "rank": 2,
+                    "objective_id": "MIM-CONVERSATION-MODE-SELECTION-V2",
+                    "application_plan": {
+                        "status": "partial_patch_hunk_required",
+                        "ready": False,
+                        "pairs": [
+                            {
+                                "local_path": "tmp_remote_mim/core/routers/studio.py",
+                                "remote_path": "/home/testpilot/mim/core/routers/studio.py",
+                                "apply_command": "",
+                            }
+                        ],
+                        "apply_commands": [],
+                    },
+                },
+            ],
+        }
+
+        manifest = module.build_deploy_application_manifest(queue)
+
+        self.assertEqual("ready_with_partial_hunks_required", manifest["status"])
+        self.assertEqual(1, manifest["ready_count"])
+        self.assertEqual(1, manifest["partial_hunk_count"])
+
+    def test_deploy_application_manifest_markdown_is_written(self):
+        module = load_scoreboard_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp)
+            manifest = {
+                "artifact_type": "mim_tod_deploy_application_manifest_v1",
+                "generated_at": "2026-07-14T04:30:00Z",
+                "status": "ready_to_apply_existing_path",
+                "ready_count": 1,
+                "pending_count": 1,
+                "no_new_channel_required": True,
+                "existing_apply_script": "scripts\\Send-TODMimScript.ps1",
+                "credit_policy": "No TOD independent credit.",
+                "items": [
+                    {
+                        "rank": 1,
+                        "objective_id": "MIM-STALE-REMEDIATION-MATERIALIZATION-V1",
+                        "application_status": "ready_for_existing_send_script",
+                        "ready": True,
+                        "verification_status": "not_verified",
+                        "verification_reason": "current live task request is not implementation-shaped",
+                        "deploy_payload": "runtime_remote_training/deploy_payloads/materialization.json",
+                        "apply_commands": ["powershell -NoProfile -File scripts\\Send-TODMimScript.ps1 -LocalPath 'a' -RemotePath 'b'"],
+                        "post_deploy_proof_steps": ["Verify task_class=implementation"],
+                    }
+                ],
+            }
+
+            paths = module.write_deploy_application_manifest(manifest, out_dir)
+
+            rendered = Path(paths["md"]).read_text(encoding="utf-8")
+            self.assertIn("MIM/TOD Deploy Application Manifest", rendered)
+            self.assertIn("No new channel required: true", rendered)
+            self.assertIn("Partial hunk payloads", rendered)
+            self.assertIn("Send-TODMimScript.ps1", rendered)
+            self.assertIn("Verify task_class=implementation", rendered)
+
+    def test_deploy_application_preflight_verifies_hashes_and_existing_script(self):
+        module = load_scoreboard_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            local_file = root / "tmp_remote_mim" / "core" / "autonomy_driver_service.py"
+            local_file.parent.mkdir(parents=True)
+            local_file.write_text("print('ready')\n", encoding="utf-8")
+            digest = __import__("hashlib").sha256(local_file.read_bytes()).hexdigest()
+            module.ROOT = root
+            manifest = {
+                "no_new_channel_required": True,
+                "existing_apply_script": "scripts\\Send-TODMimScript.ps1",
+                "credit_policy": "No TOD independent credit.",
+                "items": [
+                    {
+                        "rank": 1,
+                        "objective_id": "MIM-STALE-REMEDIATION-MATERIALIZATION-V1",
+                        "file_pairs": [
+                            {
+                                "local_path": "tmp_remote_mim/core/autonomy_driver_service.py",
+                                "remote_path": "/home/testpilot/mim/core/autonomy_driver_service.py",
+                                "sha256": digest,
+                                "apply_command": "powershell -NoProfile -File scripts\\Send-TODMimScript.ps1 -LocalPath 'tmp_remote_mim/core/autonomy_driver_service.py' -RemotePath '/home/testpilot/mim/core/autonomy_driver_service.py'",
+                            }
+                        ],
+                    }
+                ],
+            }
+
+            preflight = module.build_deploy_application_preflight(manifest)
+
+            self.assertEqual("passed_ready_for_existing_apply", preflight["status"])
+            self.assertTrue(preflight["passed"])
+            self.assertEqual(1, preflight["verified_pairs"])
+            self.assertEqual(1, preflight["verified_full_apply_pairs"])
+            self.assertEqual(0, preflight["hunk_required_count"])
+            self.assertFalse(preflight["live_deployment_verified"])
+            pair = preflight["items"][0]["pairs"][0]
+            self.assertTrue(pair["sha256_matches"])
+            self.assertTrue(pair["command_uses_existing_script"])
+            self.assertTrue(pair["remote_target_valid"])
+
+    def test_deploy_application_preflight_markdown_is_written(self):
+        module = load_scoreboard_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp)
+            preflight = {
+                "artifact_type": "mim_tod_deploy_application_preflight_v1",
+                "generated_at": "2026-07-14T04:45:00Z",
+                "status": "ready_with_partial_hunks_required",
+                "passed": True,
+                "verified_pairs": 1,
+                "total_pairs": 1,
+                "verified_full_apply_pairs": 0,
+                "full_apply_pairs": 0,
+                "hunk_required_count": 1,
+                "no_new_channel_required": True,
+                "live_deployment_verified": False,
+                "next_action": "Materialize partial hunk payloads against the live file.",
+                "credit_policy": "No TOD independent credit.",
+                "items": [
+                    {
+                        "rank": 1,
+                        "objective_id": "MIM-STALE-REMEDIATION-MATERIALIZATION-V1",
+                        "passed": True,
+                        "application_status": "partial_patch_hunk_required",
+                        "ready_for_full_file_apply": False,
+                        "pair_count": 1,
+                        "pairs": [
+                            {
+                                "local_path": "tmp_remote_mim/core/autonomy_driver_service.py",
+                                "remote_path": "/home/testpilot/mim/core/autonomy_driver_service.py",
+                                "local_exists": True,
+                                "sha256_matches": True,
+                                "command_uses_existing_script": True,
+                            }
+                        ],
+                    }
+                ],
+            }
+
+            paths = module.write_deploy_application_preflight(preflight, out_dir)
+
+            rendered = Path(paths["md"]).read_text(encoding="utf-8")
+            self.assertIn("MIM/TOD Deploy Application Preflight", rendered)
+            self.assertIn("Status: ready_with_partial_hunks_required", rendered)
+            self.assertIn("Live deployment verified: false", rendered)
+            self.assertIn("Partial hunk payloads: 1", rendered)
+
+    def test_deploy_application_preflight_treats_partial_hunks_as_not_failed(self):
+        module = load_scoreboard_module()
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            local_file = root / "tmp_remote_mim" / "core" / "routers" / "studio.py"
+            local_file.parent.mkdir(parents=True)
+            local_file.write_text("print('partial')\n", encoding="utf-8")
+            digest = __import__("hashlib").sha256(local_file.read_bytes()).hexdigest()
+            module.ROOT = root
+            manifest = {
+                "no_new_channel_required": True,
+                "existing_apply_script": "scripts\\Send-TODMimScript.ps1",
+                "items": [
+                    {
+                        "rank": 1,
+                        "objective_id": "MIM-CONVERSATION-MODE-SELECTION-V2",
+                        "application_status": "partial_patch_hunk_required",
+                        "file_pairs": [
+                            {
+                                "local_path": "tmp_remote_mim/core/routers/studio.py",
+                                "remote_path": "/home/testpilot/mim/core/routers/studio.py",
+                                "sha256": digest,
+                                "apply_command": "",
+                            }
+                        ],
+                    }
+                ],
+            }
+
+            preflight = module.build_deploy_application_preflight(manifest)
+
+            self.assertEqual("ready_with_partial_hunks_required", preflight["status"])
+            self.assertTrue(preflight["passed"])
+            self.assertEqual([], preflight["failed_checks"])
+            self.assertEqual(1, preflight["hunk_required_count"])
+            self.assertEqual(0, preflight["full_apply_pairs"])
+            self.assertEqual(1, preflight["verified_pairs"])
+            self.assertFalse(preflight["items"][0]["ready_for_full_file_apply"])
+
     def test_tod_artifact_snapshot_uses_newest_execution_artifact(self):
         module = load_scoreboard_module()
         with tempfile.TemporaryDirectory() as tmp:

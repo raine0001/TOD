@@ -59,6 +59,177 @@ def test_packet_field_reads_nested_ready_packet():
     assert module._packet_field(payload, "old_text") == "old"
 
 
+def test_freshest_tod_execution_prefers_runtime_blocker_over_wrapper_success(tmp_path):
+    module = load_module()
+    request = {
+        "request_id": "current-request",
+        "task_id": "current-task",
+        "objective_id": "current-objective",
+    }
+    listener_result = tmp_path / "tod" / "out" / "context-sync" / "listener" / "TOD_MIM_TASK_RESULT.latest.json"
+    runtime_result = tmp_path / "runtime" / "shared" / "TOD_EXECUTION_RESULT.latest.json"
+    write_json(
+        listener_result,
+        {
+            "request_id": "current-request",
+            "task_id": "current-task",
+            "objective_id": "current-objective",
+            "status": "succeeded",
+            "generated_at": "2026-07-14T02:21:04Z",
+        },
+    )
+    write_json(
+        runtime_result,
+        {
+            "request_id": "current-request",
+            "task_id": "current-task",
+            "objective_id": "current-objective",
+            "status": "blocked",
+            "reason_code": "blocked_missing_bounded_edit_mode",
+            "summary": "TOD needs exactly one bounded target_file before LocalExecutionEngine can proceed.",
+            "generated_at": "2026-07-14T02:20:41Z",
+        },
+    )
+
+    path, payload = module._freshest_tod_execution_result([listener_result, runtime_result], request)
+
+    assert path == runtime_result
+    assert payload["status"] == "blocked"
+    assert payload["reason_code"] == "blocked_missing_bounded_edit_mode"
+
+
+def test_freshest_tod_task_request_prefers_richer_listener_payload_for_same_request(tmp_path):
+    module = load_module()
+    runtime_request = tmp_path / "runtime" / "shared" / "MIM_TOD_TASK_REQUEST.latest.json"
+    listener_request = tmp_path / "tod" / "out" / "context-sync" / "listener" / "MIM_TOD_TASK_REQUEST.latest.json"
+    write_json(
+        runtime_request,
+        {
+            "request_id": "same-request",
+            "task_id": "same-request",
+            "generated_at": "2026-07-14T02:52:19Z",
+            "validation_only": False,
+            "target_file": "",
+            "metadata_json": {
+                "materialization": {
+                    "reason_code": "blocked_missing_bounded_edit_mode",
+                }
+            },
+        },
+    )
+    write_json(
+        listener_request,
+        {
+            "request_id": "same-request",
+            "task_id": "same-request",
+            "generated_at": "2026-07-14T02:47:15Z",
+            "task_class": "diagnostic_only",
+            "objective_type": "diagnostic_only",
+            "validation_only": True,
+            "source_selected_action_code": "acknowledge_and_remediate_system_alerts",
+            "completion_gate": {"changed_files_required_for_success": False},
+        },
+    )
+
+    path, payload = module._freshest_tod_task_request([runtime_request, listener_request])
+
+    assert path == listener_request
+    assert payload["task_class"] == "diagnostic_only"
+    assert payload["source_selected_action_code"] == "acknowledge_and_remediate_system_alerts"
+
+
+def test_result_publisher_truth_surfaces_runtime_listener_conflict():
+    module = load_module()
+    current, next_action, requires_action = module._tod_result_publisher_truth_current(
+        {
+            "current_result_status": "blocked",
+            "current_result_reason_code": "blocked_missing_bounded_edit_mode",
+            "current_result_source": "runtime/shared/TOD_EXECUTION_RESULT.latest.json",
+            "runtime_truth_conflict_detected": True,
+            "runtime_truth_conflict_summary": "Runtime execution truth reports blocked while listener task result reports succeeded.",
+        }
+    )
+
+    assert requires_action is True
+    assert "conflict_detected" in current
+    assert "effective_status=blocked" in current
+    assert "blocked_missing_bounded_edit_mode" in current
+    assert "listener cycle pick up the publisher fix" in next_action
+
+
+def test_mim_tod_request_shape_flags_diagnostic_only_request():
+    module = load_module()
+    current, next_action, requires_action = module._mim_tod_request_shape_current(
+        {
+            "request_id": "diagnostic-request",
+            "objective_id": "MIM-GROWTH-AUTONOMOUS-DEBUGGING-NEXT-V1",
+            "task_class": "diagnostic_only",
+            "validation_only": True,
+            "completion_gate": {"changed_files_required_for_success": False},
+            "target_files": [],
+        }
+    )
+
+    assert requires_action is True
+    assert "not_implementation_shaped" in current
+    assert "task_class=diagnostic_only" in current
+    assert "validation_only=true" in current
+    assert "target=missing" in current
+    assert "one bounded implementation task" in next_action
+
+
+def test_mim_tod_request_shape_flags_empty_bounded_edit_directives():
+    module = load_module()
+    current, next_action, requires_action = module._mim_tod_request_shape_current(
+        {
+            "request_id": "empty-bounded-request",
+            "objective_id": "MIM-GROWTH-DEPENDENCY-REDUCTION-NEXT-V1",
+            "task_class": "implementation",
+            "validation_only": False,
+            "bounded_edit_mode": True,
+            "completion_gate": {"changed_files_required_for_success": True},
+            "target_file": "core/handoff_intake_service.py",
+            "minimal_patch_plan": {},
+            "validation_plan": [],
+            "edit_mode": "",
+            "exact_current_anchor_or_old_text": "",
+            "new_text_or_snippet": "",
+        }
+    )
+
+    assert requires_action is True
+    assert "not_implementation_shaped" in current
+    assert "patch_plan=missing" in current
+    assert "validation_plan=missing" in current
+    assert "bounded_edit_directives=missing" in current
+    assert "edit_mode + old_text_or_anchor + new_text_or_snippet" in next_action
+
+
+def test_blocked_zero_sample_live10_does_not_replace_operator_summary(tmp_path):
+    module = load_module()
+    operator = {
+        "generated_at": "2026-07-14T00:55:07Z",
+        "metrics": [
+            {"metric": "Operator Impact", "current": "7.0/10 from 10 live replies"},
+            {"metric": "Dave Needed Clarity", "current": "50% / 5 of 10"},
+        ],
+    }
+    live_path = tmp_path / "MIM_OPERATOR_IMPACT_LIVE_10_SCORECARD.latest.json"
+    write_json(
+        live_path,
+        {
+            "generated_at": "2026-07-14T01:00:55Z",
+            "status": "blocked",
+            "sample_count": 0,
+            "pass_count": 0,
+            "operator_impact_score": 0.0,
+            "error": "URLError: socket blocked",
+        },
+    )
+
+    assert module._live_operator_metrics_if_fresher(operator, live_path) is None
+
+
 def test_real_movement_card_supersedes_stale_packet_blockers_after_material_execution(tmp_path, monkeypatch):
     module = load_module()
     training_root = tmp_path / "training"
@@ -813,6 +984,52 @@ def test_real_movement_card_surfaces_idle_successor_action(tmp_path, monkeypatch
     assert "next=TOD-BLOCKER-CLEARING-DRILL-004" in idle["current"]
 
 
+def test_real_movement_card_surfaces_pending_deploy_payloads(tmp_path, monkeypatch):
+    module = load_module()
+    root = tmp_path
+    training_root = root / "runtime_remote_training"
+    context_root = root / "tod" / "out" / "context-sync"
+    monkeypatch.setattr(module, "ROOT", root)
+    monkeypatch.setattr(module, "TRAINING_ROOT", training_root)
+    monkeypatch.setattr(module, "CONTEXT_SYNC_ROOT", context_root)
+    monkeypatch.setattr(module, "INDEPENDENT_ATTEMPTS_ROOT", training_root / "tod_independent_resolution_attempts")
+    monkeypatch.setattr(module, "PATCH_SYNTHESIS_PRACTICE_PATH", training_root / "TOD_CORRECTED_PATCH_SYNTHESIS_PRACTICE_V1.latest.json")
+    monkeypatch.setattr(module, "TOD_STATE_PATH", root / "tod" / "data" / "state.json")
+
+    write_json(
+        training_root / "MIM_OPERATOR_IMPACT_SCORECARD.latest.json",
+        {"metrics": [{"metric": "Operator Impact", "current": "10.0/10"}, {"metric": "Dave Needed Clarity", "current": "100%"}]},
+    )
+    write_json(
+        training_root / "MIM_TOD_TRAINING_SCOREBOARD.latest.json",
+        {
+            "outcome_reflection": {"stale_artifact_count": 0},
+            "tod_score": {
+                "artifact_metrics": {
+                    "validated_edits": {"value": 33},
+                    "meaningful_tod_implementations": {"value": 17},
+                    "independent_tod_resolutions": {"value": 2},
+                },
+                "deploy_payloads": {
+                    "pending_count": 1,
+                    "latest": {
+                        "objective_id": "MIM-TOD-REMEDIATION-DISPATCH-BOUNDED-ACTION-V1",
+                        "file": "runtime_remote_training/deploy_payloads/patch.json",
+                    },
+                },
+            },
+        },
+    )
+
+    module.main()
+
+    payload = json.loads((training_root / "MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json").read_text(encoding="utf-8"))
+    metric = next(row for row in payload["metrics"] if row["metric"] == "Pending MIM Deploy Payloads")
+    assert "1 pending" in metric["current"]
+    assert "MIM-TOD-REMEDIATION-DISPATCH-BOUNDED-ACTION-V1" in metric["current"]
+    assert "1 MIM deploy payload" in payload["overall_readout"]
+
+
 def test_completed_blocker_drill_suppresses_stale_next_drill(tmp_path, monkeypatch):
     module = load_module()
     root = tmp_path
@@ -1021,6 +1238,363 @@ def test_open_mim_tod_dialog_debt_uses_session_state_over_stale_index(tmp_path, 
     assert next_action["source"] == "MIM_TOD_DIALOG.sessions.latest.json"
 
 
+def test_open_mim_tod_dialog_debt_ignores_missing_local_session_index_entry(tmp_path, monkeypatch):
+    module = load_module()
+    root = tmp_path
+    training_root = root / "runtime_remote_training"
+    context_root = root / "tod" / "out" / "context-sync"
+    dialog_dir = root / "shared_state" / "dialog"
+    dialog_path = dialog_dir / "MIM_TOD_DIALOG.sessions.latest.json"
+    missing_session_path = dialog_dir / "MIM_TOD_DIALOG.session-missing-local.jsonl"
+    monkeypatch.setattr(module, "ROOT", root)
+    monkeypatch.setattr(module, "TRAINING_ROOT", training_root)
+    monkeypatch.setattr(module, "CONTEXT_SYNC_ROOT", context_root)
+    monkeypatch.setattr(module, "INDEPENDENT_ATTEMPTS_ROOT", training_root / "tod_independent_resolution_attempts")
+    monkeypatch.setattr(module, "PATCH_SYNTHESIS_PRACTICE_PATH", training_root / "TOD_CORRECTED_PATCH_SYNTHESIS_PRACTICE_V1.latest.json")
+    monkeypatch.setattr(module, "TOD_STATE_PATH", root / "tod" / "data" / "state.json")
+    monkeypatch.setattr(module, "DIALOG_SESSIONS_PATH", dialog_path)
+
+    write_json(
+        training_root / "MIM_OPERATOR_IMPACT_SCORECARD.latest.json",
+        {
+            "metrics": [
+                {"metric": "Operator Impact", "current": "10.0/10 from 10 live replies"},
+                {"metric": "Dave Needed Clarity", "current": "100% / 10 of 10"},
+            ]
+        },
+    )
+    write_json(
+        training_root / "MIM_TOD_TRAINING_SCOREBOARD.latest.json",
+        {
+            "outcome_reflection": {"stale_artifact_count": 0},
+            "tod_score": {"artifact_metrics": {}},
+        },
+    )
+    write_json(
+        dialog_path,
+        {
+            "sessions": [
+                {
+                    "session_id": "missing-local",
+                    "status": "awaiting_reply",
+                    "updated_at": "2026-06-14T13:51:36Z",
+                    "session_path": str(missing_session_path),
+                    "open_reply": {"from": "CODEX", "to": "MIM", "summary": "stale missing local entry"},
+                },
+                {
+                    "session_id": "real-open",
+                    "status": "awaiting_reply",
+                    "updated_at": "2026-06-14T13:59:50Z",
+                    "open_reply": {"from": "TOD", "to": "MIM", "summary": "real unresolved entry"},
+                },
+            ]
+        },
+    )
+
+    module.main()
+
+    payload = json.loads((training_root / "MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json").read_text(encoding="utf-8"))
+    metric = next(row for row in payload["metrics"] if row["metric"] == "Open MIM/TOD Dialog Debt")
+    assert metric["current"].startswith("1 open replies;")
+    assert "oldest=real-open" in metric["current"]
+    assert "missing-local" not in metric["current"]
+    assert "CODEX->MIM" not in metric["current"]
+
+
+def test_open_mim_tod_dialog_debt_counts_last_message_when_open_reply_missing(tmp_path, monkeypatch):
+    module = load_module()
+    root = tmp_path
+    training_root = root / "runtime_remote_training"
+    context_root = root / "tod" / "out" / "context-sync"
+    dialog_dir = root / "shared_state" / "dialog"
+    dialog_path = dialog_dir / "MIM_TOD_DIALOG.sessions.latest.json"
+    monkeypatch.setattr(module, "ROOT", root)
+    monkeypatch.setattr(module, "TRAINING_ROOT", training_root)
+    monkeypatch.setattr(module, "CONTEXT_SYNC_ROOT", context_root)
+    monkeypatch.setattr(module, "INDEPENDENT_ATTEMPTS_ROOT", training_root / "tod_independent_resolution_attempts")
+    monkeypatch.setattr(module, "PATCH_SYNTHESIS_PRACTICE_PATH", training_root / "TOD_CORRECTED_PATCH_SYNTHESIS_PRACTICE_V1.latest.json")
+    monkeypatch.setattr(module, "TOD_STATE_PATH", root / "tod" / "data" / "state.json")
+    monkeypatch.setattr(module, "DIALOG_SESSIONS_PATH", dialog_path)
+
+    write_json(
+        training_root / "MIM_OPERATOR_IMPACT_SCORECARD.latest.json",
+        {
+            "metrics": [
+                {"metric": "Operator Impact", "current": "10.0/10 from 10 live replies"},
+                {"metric": "Dave Needed Clarity", "current": "100% / 10 of 10"},
+            ]
+        },
+    )
+    write_json(
+        training_root / "MIM_TOD_TRAINING_SCOREBOARD.latest.json",
+        {
+            "outcome_reflection": {"stale_artifact_count": 0},
+            "tod_score": {"artifact_metrics": {}},
+        },
+    )
+    write_json(
+        dialog_path,
+        {
+            "sessions": [
+                {
+                    "session_id": "last-message-only-open",
+                    "status": "awaiting_reply",
+                    "updated_at": "2026-06-14T13:59:50Z",
+                    "last_message": {
+                        "from": "TOD",
+                        "to": "MIM",
+                        "summary": "TOD needs MIM to answer this one-message handoff.",
+                        "timestamp": "2026-06-14T13:59:50Z",
+                    },
+                }
+            ]
+        },
+    )
+
+    module.main()
+
+    payload = json.loads((training_root / "MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json").read_text(encoding="utf-8"))
+    metric = next(row for row in payload["metrics"] if row["metric"] == "Open MIM/TOD Dialog Debt")
+    assert metric["current"].startswith("1 unmanaged open replies;")
+    assert "routes=TOD->MIM:1" in metric["current"]
+    assert "oldest=last-message-only-open" in metric["current"]
+
+
+def test_open_mim_tod_dialog_debt_closes_when_session_log_has_target_reply(tmp_path, monkeypatch):
+    module = load_module()
+    root = tmp_path
+    training_root = root / "runtime_remote_training"
+    context_root = root / "tod" / "out" / "context-sync"
+    dialog_dir = root / "shared_state" / "dialog"
+    dialog_path = dialog_dir / "MIM_TOD_DIALOG.sessions.latest.json"
+    session_path = dialog_dir / "MIM_TOD_DIALOG.session-tod-mim-replied.jsonl"
+    monkeypatch.setattr(module, "ROOT", root)
+    monkeypatch.setattr(module, "TRAINING_ROOT", training_root)
+    monkeypatch.setattr(module, "CONTEXT_SYNC_ROOT", context_root)
+    monkeypatch.setattr(module, "INDEPENDENT_ATTEMPTS_ROOT", training_root / "tod_independent_resolution_attempts")
+    monkeypatch.setattr(module, "PATCH_SYNTHESIS_PRACTICE_PATH", training_root / "TOD_CORRECTED_PATCH_SYNTHESIS_PRACTICE_V1.latest.json")
+    monkeypatch.setattr(module, "TOD_STATE_PATH", root / "tod" / "data" / "state.json")
+    monkeypatch.setattr(module, "DIALOG_SESSIONS_PATH", dialog_path)
+
+    write_json(
+        training_root / "MIM_OPERATOR_IMPACT_SCORECARD.latest.json",
+        {
+            "metrics": [
+                {"metric": "Operator Impact", "current": "10.0/10 from 10 live replies"},
+                {"metric": "Dave Needed Clarity", "current": "100% / 10 of 10"},
+            ]
+        },
+    )
+    write_json(
+        training_root / "MIM_TOD_TRAINING_SCOREBOARD.latest.json",
+        {
+            "outcome_reflection": {"stale_artifact_count": 0},
+            "tod_score": {"artifact_metrics": {}},
+        },
+    )
+    session_path.parent.mkdir(parents=True, exist_ok=True)
+    session_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "session_id": "tod-mim-replied",
+                        "turn_id": 1,
+                        "timestamp": "2026-07-13T18:51:15Z",
+                        "from": "TOD",
+                        "to": "MIM",
+                        "message_type": "status_request",
+                        "summary": "TOD asks MIM what is missing for closure.",
+                        "requires_reply": True,
+                    }
+                ),
+                json.dumps(
+                    {
+                        "session_id": "tod-mim-replied",
+                        "generated_at": "2026-07-13T19:19:58Z",
+                        "from": "MIM",
+                        "to": "TOD",
+                        "message_type": "status_response",
+                        "summary": "MIM answered with the next review step.",
+                        "reply_to_turn": 1,
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    write_json(
+        dialog_path,
+        {
+            "sessions": [
+                {
+                    "session_id": "tod-mim-replied",
+                    "status": "awaiting_reply",
+                    "updated_at": "2026-07-13T19:19:58Z",
+                    "session_path": str(session_path),
+                    "open_reply": {
+                        "turn_id": 1,
+                        "from": "TOD",
+                        "to": "MIM",
+                        "timestamp": "2026-07-13T18:51:15Z",
+                    },
+                }
+            ]
+        },
+    )
+
+    module.main()
+
+    payload = json.loads((training_root / "MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json").read_text(encoding="utf-8"))
+    metric = next(row for row in payload["metrics"] if row["metric"] == "Open MIM/TOD Dialog Debt")
+    assert metric["current"] == "0 open replies"
+
+
+def test_open_mim_tod_dialog_debt_closes_unindexed_latest_when_session_log_has_target_reply(tmp_path, monkeypatch):
+    module = load_module()
+    root = tmp_path
+    training_root = root / "runtime_remote_training"
+    context_root = root / "tod" / "out" / "context-sync"
+    dialog_dir = root / "shared_state" / "dialog"
+    dialog_path = dialog_dir / "MIM_TOD_DIALOG.sessions.latest.json"
+    session_path = dialog_dir / "MIM_TOD_DIALOG.session-unindexed-replied.jsonl"
+    latest_path = dialog_dir / "MIM_TOD_DIALOG.session-unindexed-replied.latest.json"
+    monkeypatch.setattr(module, "ROOT", root)
+    monkeypatch.setattr(module, "TRAINING_ROOT", training_root)
+    monkeypatch.setattr(module, "CONTEXT_SYNC_ROOT", context_root)
+    monkeypatch.setattr(module, "INDEPENDENT_ATTEMPTS_ROOT", training_root / "tod_independent_resolution_attempts")
+    monkeypatch.setattr(module, "PATCH_SYNTHESIS_PRACTICE_PATH", training_root / "TOD_CORRECTED_PATCH_SYNTHESIS_PRACTICE_V1.latest.json")
+    monkeypatch.setattr(module, "TOD_STATE_PATH", root / "tod" / "data" / "state.json")
+    monkeypatch.setattr(module, "DIALOG_SESSIONS_PATH", dialog_path)
+
+    write_json(
+        training_root / "MIM_OPERATOR_IMPACT_SCORECARD.latest.json",
+        {
+            "metrics": [
+                {"metric": "Operator Impact", "current": "10.0/10 from 10 live replies"},
+                {"metric": "Dave Needed Clarity", "current": "100% / 10 of 10"},
+            ]
+        },
+    )
+    write_json(
+        training_root / "MIM_TOD_TRAINING_SCOREBOARD.latest.json",
+        {
+            "outcome_reflection": {"stale_artifact_count": 0},
+            "tod_score": {"artifact_metrics": {}},
+        },
+    )
+    write_json(dialog_path, {"sessions": []})
+    session_path.parent.mkdir(parents=True, exist_ok=True)
+    session_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "session_id": "unindexed-replied",
+                        "turn_id": 1,
+                        "timestamp": "2026-07-13T18:51:15Z",
+                        "from": "TOD",
+                        "to": "MIM",
+                        "message_type": "status_request",
+                        "requires_reply": True,
+                    }
+                ),
+                json.dumps(
+                    {
+                        "session_id": "unindexed-replied",
+                        "generated_at": "2026-07-13T19:19:58Z",
+                        "from": "MIM",
+                        "to": "TOD",
+                        "message_type": "status_response",
+                        "reply_to_turn": 1,
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    current_stamp = real_datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    write_json(
+        latest_path,
+        {
+            "session_id": "unindexed-replied",
+            "status": "awaiting_reply",
+            "updated_at": current_stamp,
+            "session_path": str(session_path),
+            "open_reply": {
+                "turn_id": 1,
+                "from": "TOD",
+                "to": "MIM",
+                "timestamp": "2026-07-13T18:51:15Z",
+            },
+        },
+    )
+
+    module.main()
+
+    payload = json.loads((training_root / "MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json").read_text(encoding="utf-8"))
+    metric = next(row for row in payload["metrics"] if row["metric"] == "Open MIM/TOD Dialog Debt")
+    assert metric["current"] == "0 open replies"
+
+
+def test_open_mim_tod_dialog_debt_counts_unindexed_open_latest_state(tmp_path, monkeypatch):
+    module = load_module()
+    root = tmp_path
+    training_root = root / "runtime_remote_training"
+    context_root = root / "tod" / "out" / "context-sync"
+    dialog_dir = root / "shared_state" / "dialog"
+    dialog_path = dialog_dir / "MIM_TOD_DIALOG.sessions.latest.json"
+    monkeypatch.setattr(module, "ROOT", root)
+    monkeypatch.setattr(module, "TRAINING_ROOT", training_root)
+    monkeypatch.setattr(module, "CONTEXT_SYNC_ROOT", context_root)
+    monkeypatch.setattr(module, "INDEPENDENT_ATTEMPTS_ROOT", training_root / "tod_independent_resolution_attempts")
+    monkeypatch.setattr(module, "PATCH_SYNTHESIS_PRACTICE_PATH", training_root / "TOD_CORRECTED_PATCH_SYNTHESIS_PRACTICE_V1.latest.json")
+    monkeypatch.setattr(module, "TOD_STATE_PATH", root / "tod" / "data" / "state.json")
+    monkeypatch.setattr(module, "DIALOG_SESSIONS_PATH", dialog_path)
+
+    write_json(
+        training_root / "MIM_OPERATOR_IMPACT_SCORECARD.latest.json",
+        {
+            "metrics": [
+                {"metric": "Operator Impact", "current": "10.0/10 from 10 live replies"},
+                {"metric": "Dave Needed Clarity", "current": "100% / 10 of 10"},
+            ]
+        },
+    )
+    write_json(
+        training_root / "MIM_TOD_TRAINING_SCOREBOARD.latest.json",
+        {
+            "outcome_reflection": {"stale_artifact_count": 0},
+            "tod_score": {"artifact_metrics": {}},
+        },
+    )
+    write_json(dialog_path, {"sessions": []})
+    current_stamp = real_datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    write_json(
+        dialog_dir / "MIM_TOD_DIALOG.session-unindexed-open.latest.json",
+        {
+            "session_id": "unindexed-open",
+            "status": "awaiting_reply",
+            "updated_at": current_stamp,
+            "last_message": {
+                "from": "CODEX",
+                "to": "TOD",
+                "summary": "Unindexed open latest state still needs visibility.",
+                "timestamp": current_stamp,
+            },
+        },
+    )
+
+    module.main()
+
+    payload = json.loads((training_root / "MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json").read_text(encoding="utf-8"))
+    metric = next(row for row in payload["metrics"] if row["metric"] == "Open MIM/TOD Dialog Debt")
+    assert "unindexed-open" in metric["current"]
+    assert "routes=CODEX->TOD:1" in metric["current"]
+
+
 def test_open_dialog_debt_treats_evidence_request_payload_as_governed(tmp_path, monkeypatch):
     module = load_module()
     root = tmp_path
@@ -1104,6 +1678,425 @@ def test_open_dialog_debt_treats_evidence_request_payload_as_governed(tmp_path, 
     assert metric["current"].startswith("0 unmanaged open replies; 1 governed open replies;")
     next_action = next(row for row in payload["metrics"] if row["metric"] == "Open Dialog Debt Next Action")
     assert next_action["current"].startswith("Governed open replies are acceptable")
+
+
+def test_open_dialog_debt_uses_later_same_route_payload_correction_as_governed(tmp_path, monkeypatch):
+    module = load_module()
+    root = tmp_path
+    training_root = root / "runtime_remote_training"
+    context_root = root / "tod" / "out" / "context-sync"
+    dialog_dir = root / "shared_state" / "dialog"
+    dialog_path = dialog_dir / "MIM_TOD_DIALOG.sessions.latest.json"
+    session_path = dialog_dir / "MIM_TOD_DIALOG.session-corrected-selector.jsonl"
+    monkeypatch.setattr(module, "ROOT", root)
+    monkeypatch.setattr(module, "TRAINING_ROOT", training_root)
+    monkeypatch.setattr(module, "CONTEXT_SYNC_ROOT", context_root)
+    monkeypatch.setattr(module, "INDEPENDENT_ATTEMPTS_ROOT", training_root / "tod_independent_resolution_attempts")
+    monkeypatch.setattr(module, "PATCH_SYNTHESIS_PRACTICE_PATH", training_root / "TOD_CORRECTED_PATCH_SYNTHESIS_PRACTICE_V1.latest.json")
+    monkeypatch.setattr(module, "TOD_STATE_PATH", root / "tod" / "data" / "state.json")
+    monkeypatch.setattr(module, "DIALOG_SESSIONS_PATH", dialog_path)
+
+    write_json(
+        training_root / "MIM_OPERATOR_IMPACT_SCORECARD.latest.json",
+        {
+            "metrics": [
+                {"metric": "Operator Impact", "current": "10.0/10 from 10 live replies"},
+                {"metric": "Dave Needed Clarity", "current": "100% / 10 of 10"},
+            ]
+        },
+    )
+    write_json(
+        training_root / "MIM_TOD_TRAINING_SCOREBOARD.latest.json",
+        {
+            "outcome_reflection": {"stale_artifact_count": 0},
+            "tod_score": {"artifact_metrics": {}},
+        },
+    )
+    session_path.parent.mkdir(parents=True, exist_ok=True)
+    session_path.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "session_id": "corrected-selector",
+                        "turn_id": 1,
+                        "timestamp": "2026-06-15T22:57:16Z",
+                        "from": "CODEX",
+                        "to": "TOD",
+                        "message_type": "diagnostic_query",
+                        "summary": "Open request without useful payload.",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "session_id": "corrected-selector",
+                        "turn_id": 2,
+                        "timestamp": "2026-06-15T23:00:16Z",
+                        "from": "CODEX",
+                        "to": "TOD",
+                        "message_type": "blocker_notice",
+                        "summary": "Payload correction with governed fields.",
+                        "payload": {
+                            "dave_needed": "no",
+                            "required_tod_action": "Return a selector or precise blocker.",
+                            "required_fields": ["selected_task_id", "validation_command"],
+                            "evidence_required": ["inspected blocker artifact"],
+                            "aging_rule": "If no reply appears before 30 minutes, classify responder silence.",
+                        },
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    write_json(
+        dialog_path,
+        {
+            "sessions": [
+                {
+                    "session_id": "corrected-selector",
+                    "status": "awaiting_reply",
+                    "updated_at": "2026-06-15T23:00:16Z",
+                    "session_path": str(session_path),
+                    "open_reply": {
+                        "turn_id": 1,
+                        "from": "CODEX",
+                        "to": "TOD",
+                        "timestamp": "2026-06-15T22:57:16Z",
+                    },
+                    "last_message": {
+                        "turn_id": 2,
+                        "from": "CODEX",
+                        "to": "TOD",
+                        "timestamp": "2026-06-15T23:00:16Z",
+                    },
+                }
+            ]
+        },
+    )
+
+    module.main()
+
+    payload = json.loads((training_root / "MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json").read_text(encoding="utf-8"))
+    metric = next(row for row in payload["metrics"] if row["metric"] == "Open MIM/TOD Dialog Debt")
+    assert metric["current"].startswith("0 unmanaged open replies; 1 governed open replies;")
+    assert "owner_labeled=yes" in metric["current"]
+    assert "evidence_required=yes" in metric["current"]
+    assert "Dave needed=no" in metric["current"]
+
+
+def test_open_dialog_debt_treats_internal_requested_reply_as_governed(tmp_path, monkeypatch):
+    module = load_module()
+    root = tmp_path
+    training_root = root / "runtime_remote_training"
+    context_root = root / "tod" / "out" / "context-sync"
+    dialog_dir = root / "shared_state" / "dialog"
+    dialog_path = dialog_dir / "MIM_TOD_DIALOG.sessions.latest.json"
+    session_path = dialog_dir / "MIM_TOD_DIALOG.session-tod-troubleshoot.jsonl"
+    monkeypatch.setattr(module, "ROOT", root)
+    monkeypatch.setattr(module, "TRAINING_ROOT", training_root)
+    monkeypatch.setattr(module, "CONTEXT_SYNC_ROOT", context_root)
+    monkeypatch.setattr(module, "INDEPENDENT_ATTEMPTS_ROOT", training_root / "tod_independent_resolution_attempts")
+    monkeypatch.setattr(module, "PATCH_SYNTHESIS_PRACTICE_PATH", training_root / "TOD_CORRECTED_PATCH_SYNTHESIS_PRACTICE_V1.latest.json")
+    monkeypatch.setattr(module, "TOD_STATE_PATH", root / "tod" / "data" / "state.json")
+    monkeypatch.setattr(module, "DIALOG_SESSIONS_PATH", dialog_path)
+
+    write_json(
+        training_root / "MIM_OPERATOR_IMPACT_SCORECARD.latest.json",
+        {
+            "metrics": [
+                {"metric": "Operator Impact", "current": "10.0/10 from 10 live replies"},
+                {"metric": "Dave Needed Clarity", "current": "100% / 10 of 10"},
+            ]
+        },
+    )
+    write_json(
+        training_root / "MIM_TOD_TRAINING_SCOREBOARD.latest.json",
+        {
+            "outcome_reflection": {"stale_artifact_count": 0},
+            "tod_score": {"artifact_metrics": {}},
+        },
+    )
+    session_path.parent.mkdir(parents=True, exist_ok=True)
+    session_path.write_text(
+        json.dumps(
+            {
+                "session_id": "tod-troubleshoot",
+                "turn_id": 1,
+                "timestamp": "2026-06-15T22:57:16Z",
+                "from": "TOD",
+                "to": "MIM",
+                "message_type": "handoff_request",
+                "summary": "TOD needs troubleshooting help: review gate did not pass.",
+                "payload": {
+                    "requested_reply": {
+                        "needed": True,
+                        "fields": ["missing_fields", "missing_artifacts", "repair_step", "next_update"],
+                    },
+                    "execution": {"ok": True, "blocked": False},
+                },
+                "requires_reply": True,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    write_json(
+        dialog_path,
+        {
+            "sessions": [
+                {
+                    "session_id": "tod-troubleshoot",
+                    "status": "awaiting_reply",
+                    "timed_out": False,
+                    "updated_at": "2026-06-15T22:57:16Z",
+                    "session_path": str(session_path),
+                    "open_reply": {
+                        "from": "TOD",
+                        "to": "MIM",
+                        "summary": "TOD needs troubleshooting help: review gate did not pass.",
+                        "timestamp": "2026-06-15T22:57:16Z",
+                    },
+                }
+            ]
+        },
+    )
+
+    module.main()
+
+    payload = json.loads((training_root / "MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json").read_text(encoding="utf-8"))
+    metric = next(row for row in payload["metrics"] if row["metric"] == "Open MIM/TOD Dialog Debt")
+    assert metric["current"].startswith("0 unmanaged open replies; 1 governed open replies;")
+    assert "owner_labeled=yes" in metric["current"]
+    assert "evidence_required=yes" in metric["current"]
+    assert "Dave needed=no" in metric["current"]
+
+
+def test_open_dialog_debt_reports_oldest_governed_aging_rule_only(tmp_path, monkeypatch):
+    module = load_module()
+
+    class FixedDatetime(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            value = real_datetime(2026, 6, 16, 0, 0, 0, tzinfo=timezone.utc)
+            if tz is None:
+                return value.replace(tzinfo=None)
+            return value.astimezone(tz)
+
+    monkeypatch.setattr(module, "datetime", FixedDatetime)
+    dialog_dir = tmp_path / "shared_state" / "dialog"
+    dialog_path = dialog_dir / "MIM_TOD_DIALOG.sessions.latest.json"
+    older_path = dialog_dir / "MIM_TOD_DIALOG.session-older-default.jsonl"
+    newer_path = dialog_dir / "MIM_TOD_DIALOG.session-newer-30m.jsonl"
+    older_path.parent.mkdir(parents=True, exist_ok=True)
+    older_path.write_text(
+        json.dumps(
+            {
+                "session_id": "older-default",
+                "turn_id": 1,
+                "timestamp": "2026-06-15T23:00:00Z",
+                "from": "TOD",
+                "to": "MIM",
+                "message_type": "handoff_request",
+                "payload": {
+                    "requested_reply": {"needed": True, "fields": ["repair_step"]},
+                },
+                "requires_reply": True,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    newer_path.write_text(
+        json.dumps(
+            {
+                "session_id": "newer-30m",
+                "turn_id": 1,
+                "timestamp": "2026-06-15T23:45:00Z",
+                "from": "CODEX",
+                "to": "TOD",
+                "message_type": "diagnostic_query",
+                "payload": {
+                    "dave_needed": "no",
+                    "required_tod_action": "Return selector.",
+                    "evidence_required": ["inspected blocker"],
+                    "aging_rule": "Reply within 30 minutes.",
+                },
+                "requires_reply": True,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    write_json(
+        dialog_path,
+        {
+            "sessions": [
+                {
+                    "session_id": "older-default",
+                    "status": "awaiting_reply",
+                    "updated_at": "2026-06-15T23:00:00Z",
+                    "session_path": str(older_path),
+                    "open_reply": {
+                        "from": "TOD",
+                        "to": "MIM",
+                        "timestamp": "2026-06-15T23:00:00Z",
+                    },
+                },
+                {
+                    "session_id": "newer-30m",
+                    "status": "awaiting_reply",
+                    "updated_at": "2026-06-15T23:45:00Z",
+                    "session_path": str(newer_path),
+                    "open_reply": {
+                        "from": "CODEX",
+                        "to": "TOD",
+                        "timestamp": "2026-06-15T23:45:00Z",
+                    },
+                },
+            ]
+        },
+    )
+
+    current = module._open_dialog_debt_current(dialog_path)
+
+    assert current.startswith("0 unmanaged open replies; 2 governed open replies;")
+    assert "governed_oldest_age_m=60.0" in current
+    assert "governed_oldest_aging_rule=30m" not in current
+
+
+def test_open_dialog_debt_marks_governed_reply_overdue_after_explicit_aging_rule(tmp_path, monkeypatch):
+    module = load_module()
+
+    class FixedDatetime(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            value = real_datetime(2026, 6, 16, 0, 0, 0, tzinfo=timezone.utc)
+            if tz is None:
+                return value.replace(tzinfo=None)
+            return value.astimezone(tz)
+
+    monkeypatch.setattr(module, "datetime", FixedDatetime)
+    dialog_dir = tmp_path / "shared_state" / "dialog"
+    dialog_path = dialog_dir / "MIM_TOD_DIALOG.sessions.latest.json"
+    session_path = dialog_dir / "MIM_TOD_DIALOG.session-governed-overdue.jsonl"
+    session_path.parent.mkdir(parents=True, exist_ok=True)
+    session_path.write_text(
+        json.dumps(
+            {
+                "session_id": "governed-overdue",
+                "turn_id": 1,
+                "timestamp": "2026-06-15T23:00:00Z",
+                "from": "CODEX",
+                "to": "TOD",
+                "message_type": "diagnostic_query",
+                "payload": {
+                    "dave_needed": "no",
+                    "required_tod_action": "Return selector or precise blocker.",
+                    "evidence_required": ["inspected blocker"],
+                    "aging_rule": "If no reply appears before 30 minutes, classify responder silence.",
+                },
+                "requires_reply": True,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    write_json(
+        dialog_path,
+        {
+            "sessions": [
+                {
+                    "session_id": "governed-overdue",
+                    "status": "awaiting_reply",
+                    "updated_at": "2026-06-15T23:00:00Z",
+                    "session_path": str(session_path),
+                    "open_reply": {
+                        "from": "CODEX",
+                        "to": "TOD",
+                        "timestamp": "2026-06-15T23:00:00Z",
+                    },
+                }
+            ]
+        },
+    )
+
+    current = module._open_dialog_debt_current(dialog_path)
+    next_action = module._open_dialog_debt_next_action(current)
+
+    assert current.startswith("0 unmanaged open replies; 1 governed open replies;")
+    assert "governed_oldest_aging_rule=30m" in current
+    assert "governed_overdue=1" in current
+    assert "governed_oldest_overdue_m=30.0" in current
+    assert next_action.startswith("Governed open reply has exceeded its own aging rule")
+
+
+def test_open_dialog_debt_treats_mim_blocker_packet_shape_as_governed(tmp_path, monkeypatch):
+    module = load_module()
+
+    class FixedDatetime(real_datetime):
+        @classmethod
+        def now(cls, tz=None):
+            value = real_datetime(2026, 6, 16, 0, 10, 0, tzinfo=timezone.utc)
+            if tz is None:
+                return value.replace(tzinfo=None)
+            return value.astimezone(tz)
+
+    monkeypatch.setattr(module, "datetime", FixedDatetime)
+    dialog_dir = tmp_path / "shared_state" / "dialog"
+    dialog_path = dialog_dir / "MIM_TOD_DIALOG.sessions.latest.json"
+    session_path = dialog_dir / "MIM_TOD_DIALOG.session-mim-blocker-packet.jsonl"
+    session_path.parent.mkdir(parents=True, exist_ok=True)
+    session_path.write_text(
+        json.dumps(
+            {
+                "session_id": "mim-blocker-packet",
+                "turn_id": 1,
+                "timestamp": "2026-06-16T00:00:00Z",
+                "from": "CODEX",
+                "to": "MIM",
+                "message_type": "blocker_notice",
+                "payload": {
+                    "blocker_class": "coordination_blocker",
+                    "current_evidence": ["live task request is diagnostic_only"],
+                    "requested_mim_action": "Apply/verify the dispatch repair or publish a precise blocker.",
+                    "required_mim_response_fields": ["received", "continuation_action", "dave_needed"],
+                    "acceptance": ["next request is implementation-shaped"],
+                    "aging_rule": "If no MIM reply appears within 45 minutes, classify responder silence.",
+                    "dave_needed": "no unless production deployment credentials are unavailable",
+                },
+                "requires_reply": True,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    write_json(
+        dialog_path,
+        {
+            "sessions": [
+                {
+                    "session_id": "mim-blocker-packet",
+                    "status": "awaiting_reply",
+                    "updated_at": "2026-06-16T00:00:00Z",
+                    "session_path": str(session_path),
+                    "open_reply": {
+                        "from": "CODEX",
+                        "to": "MIM",
+                        "timestamp": "2026-06-16T00:00:00Z",
+                    },
+                }
+            ]
+        },
+    )
+
+    current = module._open_dialog_debt_current(dialog_path)
+    next_action = module._open_dialog_debt_next_action(current)
+
+    assert current.startswith("0 unmanaged open replies; 1 governed open replies;")
+    assert "Dave needed=no" in current
+    assert next_action.startswith("Governed open replies are acceptable")
 
 
 def test_open_dialog_debt_treats_required_outputs_payload_as_governed(tmp_path, monkeypatch):
@@ -1209,6 +2202,7 @@ def test_active_owner_request_state_uses_only_open_codex_requests(tmp_path, monk
     dialog_dir = root / "shared_state" / "dialog"
     dialog_path = dialog_dir / "MIM_TOD_DIALOG.sessions.latest.json"
     closed_session_path = dialog_dir / "MIM_TOD_DIALOG.session-closed-codex.jsonl"
+    active_session_path = dialog_dir / "MIM_TOD_DIALOG.session-active-codex.jsonl"
     monkeypatch.setattr(module, "ROOT", root)
     monkeypatch.setattr(module, "TRAINING_ROOT", training_root)
     monkeypatch.setattr(module, "CONTEXT_SYNC_ROOT", context_root)
@@ -1233,6 +2227,28 @@ def test_active_owner_request_state_uses_only_open_codex_requests(tmp_path, monk
             "tod_score": {"artifact_metrics": {}},
         },
     )
+    active_session_path.parent.mkdir(parents=True, exist_ok=True)
+    active_session_path.write_text(
+        json.dumps(
+            {
+                "session_id": "active-codex",
+                "turn_id": 1,
+                "timestamp": "2026-06-14T14:16:39Z",
+                "from": "CODEX",
+                "to": "TOD",
+                "message_type": "diagnostic_query",
+                "payload": {
+                    "dave_needed": "no",
+                    "required_tod_action": "Return selector.",
+                    "evidence_required": ["inspected blocker"],
+                    "aging_rule": "If no reply appears before 30 minutes, classify responder silence.",
+                },
+                "requires_reply": True,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     write_json(
         dialog_path,
         {
@@ -1248,6 +2264,7 @@ def test_active_owner_request_state_uses_only_open_codex_requests(tmp_path, monk
                     "session_id": "active-codex",
                     "status": "awaiting_reply",
                     "updated_at": "2026-06-14T14:16:39Z",
+                    "session_path": str(active_session_path),
                     "open_reply": {"from": "CODEX", "to": "TOD"},
                     "last_message": {"task_id": "TSK-3221"},
                 },
@@ -1276,6 +2293,7 @@ def test_active_owner_request_state_uses_only_open_codex_requests(tmp_path, monk
     assert metric["current"].startswith("1 active Codex owner request(s):")
     assert "CODEX->TOD active-codex" in metric["current"]
     assert "task=TSK-3221" in metric["current"]
+    assert "aging=30m" in metric["current"]
     assert "closed-codex" not in metric["current"]
     assert "active-non-codex" not in metric["current"]
 
@@ -1587,6 +2605,33 @@ def test_stale_no_viable_selector_is_not_reported_as_active():
     assert "blocked_missing_bounded_edit_mode" in current
     assert source == "TOD_NEXT_TASK_SELECTION.latest.json + TOD_EXECUTION_RESULT.latest.json"
     assert "Rerun TOD selector for the current execution blocker" in next_action
+
+
+def test_completed_field_complete_selector_supersedes_historical_blocker():
+    module = load_module()
+
+    blocker = {
+        "status": "active_blocker",
+        "generated_at": "2026-06-15T11:39:24Z",
+        "blocker_type": "smaller_task_selection_not_returned",
+    }
+    selector = {
+        "generated_at": "2026-07-16T21:08:23Z",
+        "selection_kind": "backlog_ready_objective",
+        "dispatch_status": "completed",
+        "selected_task_id": "TSK-0075",
+        "target_file": "runtime_remote_training/tod_independent_resolution_attempts/TOD_PACKET_FORMATION_MATERIALIZATION_RECOVERY.latest.json",
+        "target_function_or_rule": "bounded live-path rule/function in runtime_remote_training/tod_independent_resolution_attempts/TOD_PACKET_FORMATION_MATERIALIZATION_RECOVERY.latest.json",
+        "behavior_delta_one_sentence": "Materialize one exact current-code bounded edit packet for the selected target before LocalExecutionEngine dispatch.",
+        "validation_command": "Select-String -Path runtime_remote_training/tod_independent_resolution_attempts/TOD_PACKET_FORMATION_MATERIALIZATION_RECOVERY.latest.json -SimpleMatch packet_candidate_ready",
+        "expected_changed_files": [
+            "runtime_remote_training/tod_independent_resolution_attempts/TOD_PACKET_FORMATION_MATERIALIZATION_RECOVERY.latest.json"
+        ],
+        "rollback_note": "Rollback by restoring the selected target file from backup.",
+        "prevention_lesson": "Do not keep historical smaller-task blockers active after TOD publishes field-complete selector evidence.",
+    }
+
+    assert module._selector_supersedes_dialog_blocker(blocker, selector) is True
 
 
 def test_blocked_selector_active_task_is_not_reported_as_material_execution(tmp_path, monkeypatch):
@@ -2001,32 +3046,3 @@ def test_tod_material_execution_prefers_matching_completed_execution_result():
     assert "task=TSK-3270" in current
     assert "changed_files=1" in current
     assert "validation=passed" in current
-
-
-def test_completed_field_complete_selector_supersedes_historical_blocker():
-    module = load_module()
-
-    blocker = {
-        "status": "active_blocker",
-        "generated_at": "2026-06-15T11:39:24Z",
-        "blocker_type": "smaller_task_selection_not_returned",
-    }
-    selector = {
-        "generated_at": "2026-07-16T21:08:23Z",
-        "selection_kind": "backlog_ready_objective",
-        "dispatch_status": "completed",
-        "selected_task_id": "TSK-0075",
-        "target_file": "runtime_remote_training/tod_independent_resolution_attempts/TOD_PACKET_FORMATION_MATERIALIZATION_RECOVERY.latest.json",
-        "target_function_or_rule": "bounded live-path rule/function in runtime_remote_training/tod_independent_resolution_attempts/TOD_PACKET_FORMATION_MATERIALIZATION_RECOVERY.latest.json",
-        "behavior_delta_one_sentence": "Materialize one exact current-code bounded edit packet for the selected target before LocalExecutionEngine dispatch.",
-        "validation_command": "Select-String -Path runtime_remote_training/tod_independent_resolution_attempts/TOD_PACKET_FORMATION_MATERIALIZATION_RECOVERY.latest.json -SimpleMatch packet_candidate_ready",
-        "expected_changed_files": [
-            "runtime_remote_training/tod_independent_resolution_attempts/TOD_PACKET_FORMATION_MATERIALIZATION_RECOVERY.latest.json"
-        ],
-        "rollback_note": "Rollback by restoring the selected target file from backup.",
-        "prevention_lesson": "Do not keep historical smaller-task blockers active after TOD publishes field-complete selector evidence.",
-        "dave_needed": "no",
-    }
-
-    assert module._selector_supersedes_dialog_blocker(blocker, selector) is True
-

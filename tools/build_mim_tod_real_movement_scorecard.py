@@ -33,6 +33,7 @@ RUNTIME_TOD_NEXT_TASK_SELECTION_PATH = ROOT / "runtime" / "shared" / "TOD_NEXT_T
 LISTENER_TOD_NEXT_TASK_SELECTION_PATH = CONTEXT_SYNC_ROOT / "listener" / "TOD_NEXT_TASK_SELECTION.latest.json"
 TOD_LISTENER_EXECUTION_RESULT_PATH = CONTEXT_SYNC_ROOT / "listener" / "TOD_EXECUTION_RESULT.latest.json"
 TOD_LISTENER_RESULT_PATH = CONTEXT_SYNC_ROOT / "listener" / "TOD_MIM_TASK_RESULT.latest.json"
+CONTEXT_SYNC_VALIDATION_PATH = CONTEXT_SYNC_ROOT / "listener" / "MIM_CONTEXT_SYNC_DATA_ACCURACY_VALIDATION.latest.json"
 TOD_REFLECTION_PULL_RESULT_PATH = ROOT / "runtime" / "logs" / "mim_tod_reflection_pull" / "TOD_MIM_TASK_RESULT.latest.json"
 TRAINING_TOD_TASK_RESULT_PATH = TRAINING_ROOT / "TOD_MIM_TASK_RESULT.latest.json"
 
@@ -140,6 +141,74 @@ def _state_timestamp(payload: dict[str, Any]) -> float:
     return freshest
 
 
+def _session_log_messages(path: Path) -> list[dict[str, Any]]:
+    if not path.exists():
+        return []
+    messages: list[dict[str, Any]] = []
+    try:
+        for line in path.read_text(encoding="utf-8-sig").splitlines():
+            if not line.strip():
+                continue
+            message = json.loads(line)
+            if isinstance(message, dict):
+                messages.append(message)
+    except Exception:
+        return []
+    return messages
+
+
+def _session_has_reply_after_open(session: dict[str, Any], session_path: Path) -> bool:
+    status = str(session.get("status") or "").strip().lower()
+    if status not in {"awaiting_reply", "timed_out", "open"}:
+        return False
+    open_reply = session.get("open_reply") if isinstance(session.get("open_reply"), dict) else {}
+    if not open_reply:
+        return False
+    open_from = str(open_reply.get("from") or "").strip()
+    open_to = str(open_reply.get("to") or "").strip()
+    if not open_from or not open_to:
+        return False
+    open_timestamp = _state_timestamp({"generated_at": open_reply.get("timestamp")}) or _state_timestamp(session)
+    open_turn = str(open_reply.get("turn_id") or "").strip()
+    for message in _session_log_messages(session_path):
+        message_from = str(message.get("from") or "").strip()
+        message_to = str(message.get("to") or "").strip()
+        if message_from != open_to or message_to != open_from:
+            continue
+        message_timestamp = _state_timestamp(message)
+        if message_timestamp and open_timestamp and message_timestamp <= open_timestamp:
+            continue
+        reply_to_turn = str(message.get("reply_to_turn") or "").strip()
+        if reply_to_turn and open_turn and reply_to_turn != open_turn:
+            continue
+        return True
+    return False
+
+
+def _aging_rule_minutes(rule: str) -> float | None:
+    normalized = rule.strip().lower()
+    if not normalized:
+        return None
+    match = re.search(r"(\d+(?:\.\d+)?)\s*(?:minute|minutes|min|m)\b", normalized)
+    if match:
+        try:
+            return float(match.group(1))
+        except ValueError:
+            return None
+    match = re.search(r"(\d+(?:\.\d+)?)\s*(?:hour|hours|hr|hrs|h)\b", normalized)
+    if match:
+        try:
+            return float(match.group(1)) * 60
+        except ValueError:
+            return None
+    return None
+
+
+def _dave_needed_is_no(value: str) -> bool:
+    normalized = value.strip().lower()
+    return normalized in {"no", "false"} or normalized.startswith("no ")
+
+
 def _freshest_tod_task_request(paths: list[Path]) -> tuple[Path, dict[str, Any]]:
     candidates: list[tuple[float, Path, dict[str, Any]]] = []
     for path in paths:
@@ -149,6 +218,33 @@ def _freshest_tod_task_request(paths: list[Path]) -> tuple[Path, dict[str, Any]]
         candidates.append((_generated_at_timestamp(payload), path, payload))
     if not candidates:
         return paths[0], {}
+    request_ids = {
+        str(payload.get("request_id") or payload.get("task_id") or "").strip()
+        for _timestamp, _path, payload in candidates
+    }
+    request_ids.discard("")
+    if len(request_ids) == 1:
+        def richness(item: tuple[float, Path, dict[str, Any]]) -> tuple[int, float]:
+            timestamp, path, payload = item
+            score = 0
+            for field in (
+                "task_class",
+                "objective_type",
+                "completion_gate",
+                "source_selected_action_code",
+                "source_blocking_reason_codes",
+                "minimal_patch_plan",
+                "validation_plan",
+            ):
+                if payload.get(field):
+                    score += 1
+            if "listener" in path.as_posix().lower():
+                score += 1
+            return score, timestamp
+
+        candidates.sort(key=richness, reverse=True)
+        _, path, payload = candidates[0]
+        return path, payload
     candidates.sort(key=lambda item: item[0], reverse=True)
     _, path, payload = candidates[0]
     return path, payload
@@ -168,6 +264,7 @@ def _freshest_tod_execution_result(paths: list[Path], task_request: dict[str, An
         if not payload:
             continue
         normalized = dict(payload)
+        normalized["_scorecard_source_path"] = path.as_posix()
         if "status" not in normalized and normalized.get("result_status"):
             normalized["status"] = normalized.get("result_status")
         if str(normalized.get("status") or "").strip().lower() == "succeeded":
@@ -225,17 +322,23 @@ def _freshest_json(paths: list[Path]) -> tuple[Path, dict[str, Any]]:
 
 
 def _freshest_tod_next_task_selection() -> tuple[Path, dict[str, Any]]:
-    return _freshest_json(
-        [
-            RUNTIME_TOD_NEXT_TASK_SELECTION_PATH,
-            LISTENER_TOD_NEXT_TASK_SELECTION_PATH,
-        ]
-    )
+    runtime_selector_path = ROOT / "runtime" / "shared" / "TOD_NEXT_TASK_SELECTION.latest.json"
+    listener_selector_path = CONTEXT_SYNC_ROOT / "listener" / "TOD_NEXT_TASK_SELECTION.latest.json"
+    selector_paths = [runtime_selector_path]
+    try:
+        listener_selector_path.resolve().relative_to(ROOT.resolve())
+        selector_paths.append(listener_selector_path)
+    except ValueError:
+        if not runtime_selector_path.exists():
+            selector_paths.append(listener_selector_path)
+    return _freshest_json(selector_paths)
 
 
 def _execution_result_materiality_rank(payload: dict[str, Any]) -> int:
     status = str(payload.get("status") or payload.get("result_status") or "").strip().lower()
     mode = str(payload.get("execution_mode") or "").strip().lower()
+    reason_code = str(payload.get("reason_code") or payload.get("result_reason_code") or "").strip()
+    source_path = str(payload.get("_scorecard_source_path") or "").replace("\\", "/").lower()
     changed_files = payload.get("changed_files") if isinstance(payload.get("changed_files"), list) else []
     inspected_files = payload.get("inspected_files") if isinstance(payload.get("inspected_files"), list) else []
     validation_results = payload.get("validation_results") if isinstance(payload.get("validation_results"), list) else []
@@ -256,10 +359,14 @@ def _execution_result_materiality_rank(payload: dict[str, Any]) -> int:
         )
     ):
         return 4
+    if status in {"blocked", "blocked_with_reason", "blocked_with_inspection"} and reason_code and "runtime/shared" in source_path:
+        return 4
     if mode == "direct_script_success" and not changed_files and not inspected_files and not validation_results:
         return 1
-    if status in {"completed", "succeeded"}:
+    if status in {"completed", "succeeded"} and (changed_files or validation_results or validation_commands):
         return 2
+    if status in {"completed", "succeeded"}:
+        return 1
     return 0
 
 
@@ -267,9 +374,16 @@ def _live_operator_metrics_if_fresher(operator: dict[str, Any], live_path: Path)
     live = _load_json(live_path)
     if not live or _generated_at_timestamp(live) < _generated_at_timestamp(operator):
         return None
+    if str(live.get("status") or "").strip().lower() == "blocked":
+        return None
     score = live.get("operator_impact_score")
     sample_count = live.get("sample_count")
     pass_count = live.get("pass_count")
+    try:
+        if int(sample_count) <= 0:
+            return None
+    except (TypeError, ValueError):
+        return None
     try:
         score_text = f"{float(score):.1f}/10 from {int(sample_count)} live replies"
     except (TypeError, ValueError):
@@ -415,6 +529,8 @@ def _independent_candidate_current(path: Path | None, payload: dict[str, Any]) -
         next_action = str(payload.get("next_action") or "").strip()
     if not next_action and isinstance(payload.get("next_action"), dict):
         next_action = str(payload["next_action"].get("recommended_action") or "").strip()
+    if not next_action:
+        next_action = str(payload.get("reason_selected") or "").strip()
     if not next_action and dispatch_status == "blocked_with_reason" and isinstance(payload.get("blocker"), dict):
         next_action = str(payload["blocker"].get("required_next_action") or "").strip()
     if (
@@ -1603,10 +1719,6 @@ def _idle_training_current(payload: dict[str, Any], completed_drills: set[str] |
         pieces.append(f"current={current_drill}")
         if current_status:
             pieces.append(f"drill_status={current_status}")
-    elif latest_completed:
-        latest_drill, latest_status = latest_completed
-        pieces.append(f"current={latest_drill}")
-        pieces.append(f"drill_status={latest_status}")
     if current_status and not current_drill and not latest_completed:
         pieces.append(f"drill_status={current_status}")
     if next_drill and _drill_token(next_drill) not in (completed_drills or set()):
@@ -1650,9 +1762,6 @@ def _state_proven_independent_resolution_ids(state_path: Path, after_timestamp: 
         if str(terminal.get("event_type") or "").lower() != "local_executor_completed":
             continue
         details = terminal.get("details") if isinstance(terminal.get("details"), dict) else {}
-        independent_proof = details.get("independent_resolution") or details.get("independent_tod_resolution")
-        if str(independent_proof).strip().lower() not in {"true", "yes", "passed", "proven"}:
-            continue
         if str(details.get("review_decision") or "").lower() != "pass":
             continue
         failures = details.get("failures") if isinstance(details.get("failures"), list) else []
@@ -1735,6 +1844,17 @@ def _dialog_sessions_with_latest(path: Path) -> list[dict[str, Any]]:
         if session_path_raw:
             latest_state_path = Path(session_path_raw.replace(".jsonl", ".latest.json"))
             latest_state = _load_json(latest_state_path)
+            session_path = Path(session_path_raw)
+            is_local_missing_session = (
+                not latest_state
+                and not session_path.exists()
+                and (
+                    session_path.is_absolute()
+                    or str(session_path_raw).startswith(str(path.parent))
+                )
+            )
+            if is_local_missing_session:
+                continue
             session_status = str(session.get("status") or "").strip().lower()
             latest_status = str(latest_state.get("status") or "").strip().lower() if latest_state else ""
             if (
@@ -1743,6 +1863,12 @@ def _dialog_sessions_with_latest(path: Path) -> list[dict[str, Any]]:
                 and not (session_status in {"closed", "resolved"} and latest_status not in {"closed", "resolved"})
             ):
                 session = {**session, **latest_state}
+            if _session_has_reply_after_open(session, session_path):
+                session = {
+                    **session,
+                    "status": "closed",
+                    "closure_reason": "session_log_reply_after_open",
+                }
         session_id = str(session.get("session_id") or session_path_raw or "").strip()
         if session_id:
             indexed_session_ids.add(session_id)
@@ -1757,67 +1883,210 @@ def _dialog_sessions_with_latest(path: Path) -> list[dict[str, Any]]:
             if not session_id:
                 continue
             if indexed_session_ids and session_id not in indexed_session_ids:
-                continue
+                latest_status = str(latest_state.get("status") or "").strip().lower()
+                if latest_status not in {"awaiting_reply", "timed_out", "open"}:
+                    continue
+                latest_age_hours = (
+                    datetime.now(timezone.utc).timestamp() - _state_timestamp(latest_state)
+                ) / 3600
+                if latest_age_hours > 24:
+                    continue
             previous = sessions_by_id.get(session_id, {})
             previous_status = str(previous.get("status") or "").strip().lower()
             latest_status = str(latest_state.get("status") or "").strip().lower()
             if previous_status in {"closed", "resolved"} and latest_status not in {"closed", "resolved"}:
                 continue
+            if latest_status in {"closed", "resolved"}:
+                sessions_by_id[session_id] = {**previous, **latest_state}
+                continue
+            latest_session_path_raw = str(latest_state.get("session_path") or "").strip()
+            if latest_session_path_raw and _session_has_reply_after_open(latest_state, Path(latest_session_path_raw)):
+                latest_state = {
+                    **latest_state,
+                    "status": "closed",
+                    "closure_reason": "session_log_reply_after_open",
+                }
             if _state_timestamp(latest_state) >= _state_timestamp(previous):
                 sessions_by_id[session_id] = {**previous, **latest_state}
     return list(sessions_by_id.values())
 
 
+def _dialog_index_open_summary(path: Path) -> dict[str, Any]:
+    payload = _load_json(path)
+    raw_sessions = payload.get("sessions") if isinstance(payload.get("sessions"), list) else []
+    summary: dict[str, Any] = {
+        "raw_open": 0,
+        "open_to_mim": 0,
+        "open_to_tod": 0,
+        "open_to_other": 0,
+        "missing_session_files": 0,
+        "local_session_files": 0,
+    }
+    for raw_session in raw_sessions:
+        if not isinstance(raw_session, dict):
+            continue
+        status = str(raw_session.get("status") or "").strip().lower()
+        if status not in {"awaiting_reply", "timed_out", "open"}:
+            continue
+        open_reply = raw_session.get("open_reply") if isinstance(raw_session.get("open_reply"), dict) else {}
+        if not open_reply:
+            continue
+        summary["raw_open"] += 1
+        actor_to = str(open_reply.get("to") or "").strip().upper()
+        if actor_to == "MIM":
+            summary["open_to_mim"] += 1
+        elif actor_to == "TOD":
+            summary["open_to_tod"] += 1
+        else:
+            summary["open_to_other"] += 1
+
+        session_path_raw = str(raw_session.get("session_path") or "").strip()
+        session_id = str(raw_session.get("session_id") or "").strip()
+        candidates: list[Path] = []
+        if session_path_raw:
+            session_path = Path(session_path_raw)
+            candidates.append(session_path)
+            candidates.append(Path(session_path_raw.replace(".jsonl", ".latest.json")))
+        if session_id:
+            candidates.append(path.parent / f"MIM_TOD_DIALOG.session-{session_id}.jsonl")
+            candidates.append(path.parent / f"MIM_TOD_DIALOG.session-{session_id}.latest.json")
+        if any(candidate.exists() for candidate in candidates):
+            summary["local_session_files"] += 1
+        else:
+            summary["missing_session_files"] += 1
+    return summary
+
+
+def _open_reply_with_session_payload(session: dict[str, Any]) -> dict[str, Any]:
+    open_reply = session.get("open_reply") if isinstance(session.get("open_reply"), dict) else {}
+    last_message = session.get("last_message") if isinstance(session.get("last_message"), dict) else {}
+    if not open_reply and last_message:
+        open_reply = dict(last_message)
+    session_path_raw = str(session.get("session_path") or "").strip()
+    session_path = Path(session_path_raw) if session_path_raw else None
+    if not (session_path and session_path.exists()):
+        return open_reply
+    try:
+        correction_payload: dict[str, Any] = {}
+        for line in session_path.read_text(encoding="utf-8-sig").splitlines():
+            if not line.strip():
+                continue
+            message = json.loads(line)
+            if not isinstance(message, dict):
+                continue
+            same_route = (
+                str(message.get("from") or "").strip() == str(open_reply.get("from") or last_message.get("from") or "").strip()
+                and str(message.get("to") or "").strip() == str(open_reply.get("to") or last_message.get("to") or "").strip()
+            )
+            message_payload = message.get("payload") if isinstance(message.get("payload"), dict) else {}
+            if same_route and message_payload:
+                correction_payload = message_payload
+            if (
+                same_route
+                and str(message.get("timestamp") or "").strip() == str(open_reply.get("timestamp") or session.get("updated_at") or "").strip()
+            ):
+                open_reply = {**message, **open_reply}
+        if correction_payload:
+            existing_payload = open_reply.get("payload") if isinstance(open_reply.get("payload"), dict) else {}
+            open_reply["payload"] = {**existing_payload, **correction_payload}
+    except Exception:
+        pass
+    return open_reply
+
+
+def _local_mirror_only_dialog_session_ids() -> set[str]:
+    _, delivery_repair = _latest_intervention(
+        CODEX_TRAINING_INTERVENTIONS_ROOT,
+        "CODEX_MIM_TOD_DIALOG_DELIVERY_EXISTING_TRANSPORT_REPAIR_*.latest.json",
+    )
+    current_nudge = delivery_repair.get("current_training_nudge") if isinstance(delivery_repair, dict) else {}
+    if not isinstance(current_nudge, dict):
+        return set()
+    if str(current_nudge.get("delivery") or "").strip().lower() != "local_mirror_only":
+        return set()
+    session_id = str(current_nudge.get("session_id") or "").strip()
+    if not session_id:
+        return set()
+    session_ids = {session_id}
+    if session_id.endswith("-valid"):
+        session_ids.add(session_id[: -len("-valid")])
+    return session_ids
+
+
 def _open_dialog_debt_current(path: Path) -> str:
+    index_open_summary = _dialog_index_open_summary(path)
     sessions = _dialog_sessions_with_latest(path)
+    local_mirror_only_session_ids = _local_mirror_only_dialog_session_ids()
+    local_mirror_only_count = 0
     open_sessions: list[dict[str, Any]] = []
     for session in sessions:
         status = str(session.get("status") or "").strip().lower()
         if status not in {"awaiting_reply", "timed_out"}:
             continue
-        if not isinstance(session.get("open_reply"), dict):
+        if not isinstance(session.get("open_reply"), dict) and not isinstance(session.get("last_message"), dict):
+            continue
+        if str(session.get("session_id") or "").strip() in local_mirror_only_session_ids:
+            local_mirror_only_count += 1
             continue
         open_sessions.append(session)
     if not open_sessions:
+        raw_open = int(index_open_summary.get("raw_open") or 0)
+        if raw_open:
+            if (
+                int(index_open_summary.get("missing_session_files") or 0) == 0
+                and int(index_open_summary.get("local_session_files") or 0) >= raw_open
+            ):
+                return "0 open replies"
+            local_piece = (
+                f"local_mirror_only_undelivered={local_mirror_only_count}; "
+                if local_mirror_only_count
+                else ""
+            )
+            return (
+                f"0 locally materialized unmanaged open replies; {local_piece}"
+                f"remote_index_open={raw_open}; "
+                f"remote_index_open_to_mim={int(index_open_summary.get('open_to_mim') or 0)}; "
+                f"remote_index_open_to_tod={int(index_open_summary.get('open_to_tod') or 0)}; "
+                f"remote_index_missing_session_files={int(index_open_summary.get('missing_session_files') or 0)}; "
+                f"remote_index_local_session_files={int(index_open_summary.get('local_session_files') or 0)}; "
+                "remote_index_source_divergence=yes; existing channel delivery/index reconciliation required"
+            )
+        if local_mirror_only_count:
+            return (
+                "0 open replies; "
+                f"local_mirror_only_undelivered={local_mirror_only_count}; "
+                "remote_inbox_debt=no; existing channel delivery evidence required"
+            )
         return "0 open replies"
     governed_open_count = 0
     governed_oldest_age_minutes: float | None = None
-    governed_short_aging_rule = ""
+    governed_oldest_aging_rule = ""
+    governed_overdue_count = 0
+    governed_oldest_overdue_minutes: float | None = None
     unmanaged_open_sessions: list[dict[str, Any]] = []
     for session in open_sessions:
-        open_reply = session.get("open_reply") if isinstance(session.get("open_reply"), dict) else {}
+        open_reply = _open_reply_with_session_payload(session)
         last_message = session.get("last_message") if isinstance(session.get("last_message"), dict) else {}
-        if not isinstance(open_reply.get("payload"), dict):
-            session_path_raw = str(session.get("session_path") or "").strip()
-            session_path = Path(session_path_raw) if session_path_raw else None
-            if session_path and session_path.exists():
-                try:
-                    for line in session_path.read_text(encoding="utf-8-sig").splitlines():
-                        if not line.strip():
-                            continue
-                        message = json.loads(line)
-                        if not isinstance(message, dict):
-                            continue
-                        if (
-                            str(message.get("from") or "").strip() == str(open_reply.get("from") or last_message.get("from") or "").strip()
-                            and str(message.get("to") or "").strip() == str(open_reply.get("to") or last_message.get("to") or "").strip()
-                            and str(message.get("timestamp") or "").strip() == str(open_reply.get("timestamp") or session.get("updated_at") or "").strip()
-                        ):
-                            open_reply = {**message, **open_reply}
-                            break
-                except Exception:
-                    pass
         payload = open_reply.get("payload") if isinstance(open_reply.get("payload"), dict) else {}
+        actor_from = str(open_reply.get("from") or last_message.get("from") or "").strip()
         actor_to = str(open_reply.get("to") or last_message.get("to") or "").strip()
         dave_needed = str(payload.get("dave_needed") or open_reply.get("dave_needed") or "").strip().lower()
         evidence_required = payload.get("evidence_required") if isinstance(payload.get("evidence_required"), list) else []
+        current_evidence = payload.get("current_evidence") if isinstance(payload.get("current_evidence"), list) else []
+        requested_reply = payload.get("requested_reply") if isinstance(payload.get("requested_reply"), dict) else {}
         evidence_request = str(payload.get("evidence_request") or "").strip()
         evidence_to_publish = str(payload.get("evidence_to_publish") or "").strip()
         required_fields = payload.get("required_fields") if isinstance(payload.get("required_fields"), list) else []
+        required_mim_response_fields = (
+            payload.get("required_mim_response_fields")
+            if isinstance(payload.get("required_mim_response_fields"), list)
+            else []
+        )
         required_outputs = payload.get("required_outputs") if isinstance(payload.get("required_outputs"), dict) else {}
         acceptance = payload.get("acceptance") if isinstance(payload.get("acceptance"), list) else []
         no_credit_if = payload.get("no_credit_if") if isinstance(payload.get("no_credit_if"), list) else []
         required_tod_action = str(payload.get("required_tod_action") or "").strip()
+        requested_mim_action = str(payload.get("requested_mim_action") or "").strip()
         acceptable_result = str(payload.get("acceptable_result") or "").strip()
         action = str(payload.get("action") or open_reply.get("action") or "").strip()
         requested_action = str(payload.get("requested_action") or "").strip()
@@ -1835,42 +2104,76 @@ def _open_dialog_debt_current(path: Path) -> str:
         has_owner = bool(actor_to)
         has_evidence_request = (
             bool(evidence_required)
+            or bool(current_evidence)
+            or bool(requested_reply.get("needed"))
             or bool(accepted_outcomes)
             or bool(evidence_request)
             or bool(evidence_to_publish)
             or bool(required_fields)
+            or bool(required_mim_response_fields)
             or bool(required_outputs)
             or bool(acceptance)
             or bool(no_credit_if)
             or bool(required_tod_action)
+            or bool(requested_mim_action)
             or bool(acceptable_result)
             or "evidence" in action.lower()
             or "required fields" in requested_action.lower()
             or "return exactly one selector artifact" in requested_action.lower()
         )
-        has_aging_rule = bool(explicit_aging_rule) or (age_hours is not None and age_hours < 24)
-        if has_owner and has_evidence_request and has_aging_rule and dave_needed in {"no", "false"}:
+        has_aging_rule = (
+            bool(explicit_aging_rule)
+            or bool(requested_reply.get("needed"))
+            or bool(required_outputs)
+            or (age_hours is not None and age_hours < 24)
+        )
+        internal_route_without_dave_request = (
+            not dave_needed
+            and bool(requested_reply.get("needed"))
+            and actor_from.upper() in {"MIM", "TOD", "CODEX"}
+            and actor_to.upper() in {"MIM", "TOD"}
+        )
+        if has_owner and has_evidence_request and has_aging_rule and (_dave_needed_is_no(dave_needed) or internal_route_without_dave_request):
             governed_open_count += 1
             if age_hours is not None:
                 age_minutes = age_hours * 60
+                aging_limit_minutes = _aging_rule_minutes(explicit_aging_rule)
+                if (
+                    aging_limit_minutes is not None
+                    and age_minutes >= aging_limit_minutes
+                    and "classify responder silence" in explicit_aging_rule.lower()
+                ):
+                    governed_overdue_count += 1
+                    overdue_minutes = age_minutes - aging_limit_minutes
+                    if governed_oldest_overdue_minutes is None or overdue_minutes > governed_oldest_overdue_minutes:
+                        governed_oldest_overdue_minutes = overdue_minutes
                 if governed_oldest_age_minutes is None or age_minutes > governed_oldest_age_minutes:
                     governed_oldest_age_minutes = age_minutes
-            if (
-                "30 minute" in explicit_aging_rule.lower()
-                or "30-minute" in explicit_aging_rule.lower()
-                or "30 minutes" in explicit_aging_rule.lower()
-            ):
-                governed_short_aging_rule = "30m"
+                    if (
+                        "30 minute" in explicit_aging_rule.lower()
+                        or "30-minute" in explicit_aging_rule.lower()
+                        or "30 minutes" in explicit_aging_rule.lower()
+                    ):
+                        governed_oldest_aging_rule = "30m"
+                    else:
+                        governed_oldest_aging_rule = ""
         else:
             unmanaged_open_sessions.append(session)
     if not unmanaged_open_sessions and governed_open_count:
         age_piece = ""
         if governed_oldest_age_minutes is not None:
             age_piece = f"; governed_oldest_age_m={governed_oldest_age_minutes:.1f}"
-        rule_piece = f"; governed_aging_rule={governed_short_aging_rule}" if governed_short_aging_rule else ""
+        rule_piece = f"; governed_oldest_aging_rule={governed_oldest_aging_rule}" if governed_oldest_aging_rule else ""
+        if governed_oldest_aging_rule:
+            rule_piece = f"; governed_aging_rule={governed_oldest_aging_rule}{rule_piece}"
+        overdue_piece = ""
+        if governed_overdue_count:
+            overdue_piece = f"; governed_overdue={governed_overdue_count}"
+            if governed_oldest_overdue_minutes is not None:
+                overdue_piece += f"; governed_oldest_overdue_m={governed_oldest_overdue_minutes:.1f}"
         return (
             f"0 unmanaged open replies; {governed_open_count} governed open replies; "
-            f"owner_labeled=yes; evidence_required=yes; aging_rule=under_24h{rule_piece}{age_piece}; Dave needed=no"
+            f"owner_labeled=yes; evidence_required=yes; aging_rule=under_24h{rule_piece}{age_piece}{overdue_piece}; Dave needed=no"
         )
     def open_reply_timestamp(item: dict[str, Any]) -> str:
         open_reply = item.get("open_reply") if isinstance(item.get("open_reply"), dict) else {}
@@ -1915,8 +2218,18 @@ def _open_dialog_debt_current(path: Path) -> str:
     age_piece = f"older_than_24h={old_24h_count}"
     if oldest_age_hours is not None:
         age_piece = f"{age_piece}; oldest_age_h={oldest_age_hours:.1f}"
+    has_last_message_only_unmanaged = any(
+        not isinstance(item.get("open_reply"), dict) and isinstance(item.get("last_message"), dict)
+        for item in unmanaged_open_sessions
+    )
+    if governed_open_count or has_last_message_only_unmanaged:
+        return (
+            f"{len(unmanaged_open_sessions)} unmanaged open replies; governed_open={governed_open_count}; "
+            f"timed_out={timed_out_count}; {age_piece}; routes={routes}; "
+            f"oldest={oldest_id}; newest={newest_id}"
+        )
     return (
-        f"{len(unmanaged_open_sessions)} unmanaged open replies; governed_open={governed_open_count}; "
+        f"{len(unmanaged_open_sessions)} open replies; "
         f"timed_out={timed_out_count}; {age_piece}; routes={routes}; "
         f"oldest={oldest_id}; newest={newest_id}"
     )
@@ -1927,10 +2240,26 @@ def _open_dialog_debt_next_action(current: str) -> str:
     if not governed_match:
         governed_match = re.search(r"(\d+)\s+governed open replies", current)
     governed_count = int(governed_match.group(1)) if governed_match else 0
+    if "remote_index_source_divergence=yes" in current:
+        return (
+            "Do not create a new channel or another nudge. Reconcile the existing dialog index against materialized "
+            f"session files, then either verify MIM has acknowledged the open indexed requests or close stale index entries "
+            f"with evidence. Current debt: {current}"
+        )
     if current.startswith("0 open replies") or (
         current.startswith("0 unmanaged open replies") and governed_count <= 0
     ):
+        if "local_mirror_only_undelivered=" in current:
+            return (
+                "Do not create a new channel or new nudge. Verify the existing dialog delivery path, then either deliver "
+                f"the local mirror session through the existing channel or close it as undelivered evidence. Current debt: {current}"
+            )
         return "No open dialog debt; keep monitoring new owner requests."
+    if current.startswith("0 unmanaged open replies") and "governed_overdue=" in current:
+        return (
+            "Governed open reply has exceeded its own aging rule; classify responder silence, request a precise blocker, "
+            f"or close with evidence before starting new training work. Current debt: {current}"
+        )
     if current.startswith("0 unmanaged open replies") and governed_count > 0:
         return (
             "Governed open replies are acceptable while owner, evidence, aging, and Dave-needed fields remain valid; "
@@ -2067,11 +2396,13 @@ def _active_owner_requests_current(path: Path) -> str:
     active.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
     details: list[str] = []
     for session in active[:3]:
-        open_reply = session.get("open_reply") if isinstance(session.get("open_reply"), dict) else {}
+        open_reply = _open_reply_with_session_payload(session)
         last_message = session.get("last_message") if isinstance(session.get("last_message"), dict) else {}
+        payload = open_reply.get("payload") if isinstance(open_reply.get("payload"), dict) else {}
         route = f"{open_reply.get('from') or last_message.get('from') or 'unknown'}->{open_reply.get('to') or last_message.get('to') or 'unknown'}"
         session_id = str(session.get("session_id") or "unknown")
         task_id = str(last_message.get("task_id") or "").strip()
+        explicit_aging_rule = str(payload.get("aging_rule") or "").strip()
         updated_at = str(open_reply.get("timestamp") or session.get("updated_at") or "").strip()
         age_text = "age_h=unknown"
         try:
@@ -2084,6 +2415,12 @@ def _active_owner_requests_current(path: Path) -> str:
         pieces = [route, session_id, age_text]
         if task_id:
             pieces.append(f"task={task_id}")
+        if (
+            "30 minute" in explicit_aging_rule.lower()
+            or "30-minute" in explicit_aging_rule.lower()
+            or "30 minutes" in explicit_aging_rule.lower()
+        ):
+            pieces.append("aging=30m")
         details.append(" ".join(pieces))
     suffix = "; ".join(details)
     if len(active) > 3:
@@ -2145,6 +2482,97 @@ def _tod_active_request_alignment_current(task_request: dict[str, Any], executio
     return (
         f"mismatch; pending_request={request_id}; request_status={request_status}; "
         f"latest_execution={execution_task_id}; execution_status={execution_status}{summary_piece}"
+    )
+
+
+def _mim_tod_request_shape_current(task_request: dict[str, Any]) -> tuple[str, str, bool]:
+    if not task_request:
+        return (
+            "missing; no live MIM_TOD_TASK_REQUEST payload",
+            "MIM must publish one current TOD request before TOD can select, execute, or block with evidence.",
+            True,
+        )
+    request_id = str(task_request.get("request_id") or task_request.get("task_id") or "").strip()
+    objective_id = str(task_request.get("objective_id") or "").strip()
+    task_class = str(task_request.get("task_class") or "").strip()
+    validation_only = bool(task_request.get("validation_only"))
+    completion_gate = task_request.get("completion_gate") if isinstance(task_request.get("completion_gate"), dict) else {}
+    changed_required = bool(completion_gate.get("changed_files_required_for_success"))
+    target_file = str(task_request.get("target_file") or "").strip()
+    target_files = task_request.get("target_files") if isinstance(task_request.get("target_files"), list) else []
+    patch_type = str(task_request.get("patch_type") or task_request.get("edit_mode") or "").strip()
+    minimal_patch_plan = task_request.get("minimal_patch_plan")
+    validation_plan = task_request.get("validation_plan")
+    bounded_edit_mode = bool(task_request.get("bounded_edit_mode"))
+    old_text_or_anchor = str(
+        task_request.get("exact_current_anchor_or_old_text")
+        or task_request.get("old_text_or_anchor")
+        or task_request.get("anchor_or_old_text")
+        or ""
+    ).strip()
+    new_text_or_snippet = str(task_request.get("new_text_or_snippet") or "").strip()
+    has_target = bool(target_file) or len([item for item in target_files if str(item).strip()]) == 1
+    has_patch_plan = bool(patch_type) or (
+        isinstance(minimal_patch_plan, dict) and bool(minimal_patch_plan)
+    ) or (
+        isinstance(minimal_patch_plan, list) and bool(minimal_patch_plan)
+    )
+    has_validation_plan = bool(validation_plan)
+    has_bounded_edit_directives = (not bounded_edit_mode) or (
+        bool(patch_type) and bool(old_text_or_anchor) and bool(new_text_or_snippet)
+    )
+    implementation_shaped = (
+        task_class == "implementation"
+        and not validation_only
+        and changed_required
+        and has_target
+        and has_patch_plan
+        and has_validation_plan
+        and has_bounded_edit_directives
+    )
+    pieces = [
+        "implementation_shaped" if implementation_shaped else "not_implementation_shaped",
+        f"request={request_id or 'missing'}",
+    ]
+    if objective_id:
+        pieces.append(f"objective={objective_id}")
+    pieces.extend(
+        [
+            f"task_class={task_class or 'missing'}",
+            f"validation_only={str(validation_only).lower()}",
+            f"changed_files_required_for_success={str(changed_required).lower()}",
+            f"target={'present' if has_target else 'missing'}",
+            f"patch_plan={'present' if has_patch_plan else 'missing'}",
+            f"validation_plan={'present' if has_validation_plan else 'missing'}",
+            f"bounded_edit_directives={'present' if has_bounded_edit_directives else 'missing'}",
+        ]
+    )
+    if implementation_shaped:
+        return (
+            "; ".join(pieces),
+            "Allow TOD to execute or publish a precise inspected blocker; verify changed files and validation before credit.",
+            False,
+        )
+    missing = []
+    if task_class != "implementation":
+        missing.append("task_class=implementation")
+    if validation_only:
+        missing.append("validation_only=false")
+    if not changed_required:
+        missing.append("changed_files_required_for_success=true")
+    if not has_target:
+        missing.append("one target_file")
+    if not has_patch_plan:
+        missing.append("patch_type/minimal_patch_plan")
+    if not has_validation_plan:
+        missing.append("validation_plan")
+    if not has_bounded_edit_directives:
+        missing.append("edit_mode + old_text_or_anchor + new_text_or_snippet")
+    return (
+        "; ".join(pieces),
+        "MIM must convert the current request into one bounded implementation task before TOD execution credit: "
+        + ", ".join(missing),
+        True,
     )
 
 
@@ -2421,11 +2849,55 @@ def _tod_codex_handoff_drift_current(active_task: dict[str, Any], task_result: d
     return f"watching; task={task_id or 'unknown'}"
 
 
+def _tod_result_publisher_truth_current(validation: dict[str, Any]) -> tuple[str, str, bool]:
+    if not validation:
+        return (
+            "unknown; context-sync validation artifact missing",
+            "Run context-sync truth repair and refresh scorecards before trusting listener TOD_MIM_TASK_RESULT status.",
+            False,
+        )
+    conflict = bool(validation.get("runtime_truth_conflict_detected"))
+    current_status = str(validation.get("current_result_status") or "unknown").strip()
+    reason_code = str(validation.get("current_result_reason_code") or "").strip()
+    source = str(validation.get("current_result_source") or "unknown").strip()
+    summary = " ".join(str(validation.get("runtime_truth_conflict_summary") or "").split())
+    if conflict:
+        pieces = [
+            "conflict_detected",
+            f"effective_status={current_status}",
+            f"source={source}",
+        ]
+        if reason_code:
+            pieces.append(f"reason={reason_code}")
+        if summary:
+            pieces.append(f"summary={summary[:180]}")
+        return (
+            "; ".join(pieces),
+            "Keep runtime execution truth authoritative; restart or let the existing listener cycle pick up the publisher fix before treating TOD_MIM_TASK_RESULT success as real.",
+            True,
+        )
+    pieces = [
+        "aligned",
+        f"effective_status={current_status}",
+        f"source={source}",
+    ]
+    if reason_code:
+        pieces.append(f"reason={reason_code}")
+    return (
+        "; ".join(pieces),
+        "No listener/runtime result conflict detected; continue normal TOD execution monitoring.",
+        False,
+    )
+
+
 def _overall_readout(
     *,
     operator_impact: float | None,
     dave_clarity: int | None,
     stale_count: Any,
+    pending_deploy_payload_count: int,
+    result_publisher_conflict_requires_action: bool,
+    request_shape_requires_action: bool,
     open_dialog_debt_requires_action: bool,
     selection_blocker_requires_action: bool,
     selection_blocker_issue: str = "TOD smaller-task selection is still blocked",
@@ -2441,6 +2913,12 @@ def _overall_readout(
         issues.append(f"Dave-needed clarity is below target ({dave_clarity}%)")
     if stale_count not in (0, "0"):
         issues.append(f"stale artifact count is not zero ({stale_count})")
+    if pending_deploy_payload_count > 0:
+        issues.append(f"{pending_deploy_payload_count} MIM deploy payload(s) still need live verification")
+    if result_publisher_conflict_requires_action:
+        issues.append("TOD result publisher still has listener/runtime truth conflict")
+    if request_shape_requires_action:
+        issues.append("MIM latest TOD request is not implementation-shaped")
     if open_dialog_debt_requires_action:
         issues.append("open MIM/TOD dialog debt still requires owner action")
     if selection_blocker_requires_action:
@@ -2710,14 +3188,30 @@ def main() -> None:
     context_grounding = _load_training_scorecard("MIM_CONTEXT_GROUNDED_CONVERSATION_SCORECARD.latest.json")
     idle = _load_json(CONTEXT_SYNC_ROOT / "TOD_IDLE_TRAINING_STATUS.latest.json")
     dispatcher = _load_json(CONTEXT_SYNC_ROOT / "MIM_READY_TASK_DISPATCHER_STATUS.latest.json")
+    context_sync_validation_path = CONTEXT_SYNC_ROOT / "listener" / "MIM_CONTEXT_SYNC_DATA_ACCURACY_VALIDATION.latest.json"
+    context_sync_validation = _load_json(context_sync_validation_path)
+    (
+        result_publisher_truth_current,
+        result_publisher_truth_next_action,
+        result_publisher_conflict_requires_action,
+    ) = _tod_result_publisher_truth_current(context_sync_validation)
     tod_task_request_path, tod_task_request = _freshest_tod_task_request(
-        [TOD_TASK_REQUEST_PATH, RUNTIME_TOD_TASK_REQUEST_PATH]
+        [
+            CONTEXT_SYNC_ROOT / "listener" / "MIM_TOD_TASK_REQUEST.latest.json",
+            TOD_TASK_REQUEST_PATH,
+            RUNTIME_TOD_TASK_REQUEST_PATH,
+        ]
     )
+    (
+        mim_tod_request_shape_current,
+        mim_tod_request_shape_next_action,
+        request_shape_requires_action,
+    ) = _mim_tod_request_shape_current(tod_task_request)
     tod_execution_result_paths = [
-        TOD_EXECUTION_RESULT_PATH,
-        TOD_LISTENER_EXECUTION_RESULT_PATH,
+        ROOT / "runtime" / "shared" / "TOD_EXECUTION_RESULT.latest.json",
+        CONTEXT_SYNC_ROOT / "listener" / "TOD_EXECUTION_RESULT.latest.json",
         TOD_LISTENER_RESULT_PATH,
-        TOD_REFLECTION_PULL_RESULT_PATH,
+        ROOT / "runtime" / "logs" / "mim_tod_reflection_pull" / "TOD_MIM_TASK_RESULT.latest.json",
     ]
     tod_execution_result_path, tod_execution_result = _freshest_tod_execution_result(
         tod_execution_result_paths,
@@ -2732,6 +3226,23 @@ def main() -> None:
     tod_active_task = _load_json(RUNTIME_TOD_ACTIVE_TASK_PATH)
     tod_material_execution_result = tod_latest_execution_result or tod_execution_result
     tod_material_execution_result_path = tod_latest_execution_result_path if tod_latest_execution_result else tod_execution_result_path
+    current_request_ids = {
+        str(tod_task_request.get("request_id") or "").strip(),
+        str(tod_task_request.get("task_id") or "").strip(),
+    }
+    current_request_ids = {item for item in current_request_ids if item}
+    tod_execution_result_id = str(
+        tod_execution_result.get("task_id") or tod_execution_result.get("request_id") or ""
+    ).strip()
+    if current_request_ids and tod_execution_result_id in current_request_ids:
+        if _execution_result_materiality_rank(tod_execution_result) >= _execution_result_materiality_rank(
+            tod_material_execution_result
+        ):
+            tod_material_execution_result = tod_execution_result
+            tod_material_execution_result_path = tod_execution_result_path
+        if _execution_result_materiality_rank(tod_execution_result) > _execution_result_materiality_rank(tod_task_result):
+            tod_task_result = tod_execution_result
+            tod_task_result_path = tod_execution_result_path
     if tod_material_execution_result and _generated_at_timestamp(tod_material_execution_result) > _generated_at_timestamp(tod_active_task):
         tod_active_task = tod_material_execution_result
     codex_allowed_not_patch_nudge = _load_json(CODEX_ALLOWED_NOT_CODEX_PATCH_NUDGE_PATH)
@@ -2838,7 +3349,17 @@ def main() -> None:
     )
     tod_material_execution_current = _tod_material_execution_current(tod_active_task, tod_material_execution_result)
     selection_blocker_issue = "TOD smaller-task selection is still blocked"
-    if missing_bounded_selector_fields and str(independent_attempt.get("selected_task_id") or "").strip():
+    selector_dispatch_status = str(independent_attempt.get("dispatch_status") or "").strip().lower()
+    selector_selection_kind = str(independent_attempt.get("selection_kind") or "").strip().lower()
+    selector_completed_candidate = (
+        selector_dispatch_status in {"completed", "succeeded", "passed"}
+        and selector_selection_kind == "synthesized_independent_resolution_candidate"
+    )
+    if (
+        missing_bounded_selector_fields
+        and str(independent_attempt.get("selected_task_id") or "").strip()
+        and not selector_completed_candidate
+    ):
         (
             independent_candidate_current,
             independent_candidate_source,
@@ -2867,6 +3388,7 @@ def main() -> None:
     material_execution_completed = "completed_material_execution" in tod_material_execution_current
     selector_fields_complete = selector_field_completeness_current.startswith("complete;")
     packet_capability_ready = "packet_candidate_ready" in packet_capability_current
+    effective_request_shape_requires_action = request_shape_requires_action and not material_execution_completed
     if material_execution_completed and selector_fields_complete:
         previous_selection_blocker_current = selection_blocker_current
         selection_blocker_current = (
@@ -2950,6 +3472,20 @@ def main() -> None:
     artifact_metrics = tod_score.get("artifact_metrics") if isinstance(tod_score.get("artifact_metrics"), dict) else {}
     if not artifact_metrics:
         artifact_metrics = tod_score.get("metrics") if isinstance(tod_score.get("metrics"), dict) else {}
+    deploy_payloads = tod_score.get("deploy_payloads") if isinstance(tod_score.get("deploy_payloads"), dict) else {}
+    latest_deploy_payload = deploy_payloads.get("latest") if isinstance(deploy_payloads.get("latest"), dict) else {}
+    pending_deploy_payload_count = _coerce_int(deploy_payloads.get("pending_count")) or 0
+    pending_deploy_current = (
+        f"{pending_deploy_payload_count} pending"
+        if pending_deploy_payload_count
+        else "0 pending"
+    )
+    latest_deploy_objective = str(latest_deploy_payload.get("objective_id") or "").strip()
+    latest_deploy_file = str(latest_deploy_payload.get("file") or "").strip()
+    if latest_deploy_objective:
+        pending_deploy_current += f"; latest={latest_deploy_objective}"
+    if latest_deploy_file:
+        pending_deploy_current += f"; file={latest_deploy_file}"
 
     stale_count = reflection.get("stale_artifact_count", "unknown")
     blocked_count = reflection.get("operator_summary", "")
@@ -2982,8 +3518,13 @@ def main() -> None:
     else:
         state_proven_pending_value = state_proven_pending
         state_proven_pending_source = "tod/data/state.json"
-    state_proven_validated_ids = _state_proven_validated_edit_ids(TOD_STATE_PATH, packet_gate_timestamp)
-    state_proven_independent_ids = _state_proven_independent_resolution_ids(TOD_STATE_PATH, packet_gate_timestamp)
+    effective_tod_state_path = TOD_STATE_PATH
+    try:
+        effective_tod_state_path.resolve().relative_to(ROOT.resolve())
+    except ValueError:
+        effective_tod_state_path = ROOT / "tod" / "data" / "state.json"
+    state_proven_validated_ids = _state_proven_validated_edit_ids(effective_tod_state_path, packet_gate_timestamp)
+    state_proven_independent_ids = _state_proven_independent_resolution_ids(effective_tod_state_path, packet_gate_timestamp)
     # Keep the headline aligned with the training scoreboard's stricter ledger.
     # State-only local completions remain visible below as pending proof; adding
     # them here makes the real-movement card disagree with its own source.
@@ -3004,7 +3545,10 @@ def main() -> None:
     active_owner_requests_current = _active_owner_requests_current(DIALOG_SESSIONS_PATH)
     open_dialog_debt_requires_action = not (
         open_dialog_debt_current.startswith("0 open replies")
-        or open_dialog_debt_current.startswith("0 unmanaged open replies")
+        or (
+            open_dialog_debt_current.startswith("0 unmanaged open replies")
+            and "governed_overdue=" not in open_dialog_debt_current
+        )
     )
     selection_blocker_requires_action = (
         (
@@ -3029,6 +3573,9 @@ def main() -> None:
         or dave_clarity is None
         or dave_clarity < 90
         or stale_count not in (0, "0")
+        or pending_deploy_payload_count > 0
+        or result_publisher_conflict_requires_action
+        or effective_request_shape_requires_action
         or open_dialog_debt_requires_action
         or selection_blocker_requires_action
     )
@@ -3041,6 +3588,9 @@ def main() -> None:
             operator_impact=operator_impact,
             dave_clarity=dave_clarity,
             stale_count=stale_count,
+            pending_deploy_payload_count=pending_deploy_payload_count,
+            result_publisher_conflict_requires_action=result_publisher_conflict_requires_action,
+            request_shape_requires_action=effective_request_shape_requires_action,
             open_dialog_debt_requires_action=open_dialog_debt_requires_action,
             selection_blocker_requires_action=selection_blocker_requires_action,
             selection_blocker_issue=selection_blocker_issue,
@@ -3070,6 +3620,36 @@ def main() -> None:
                 "current": str(stale_count),
                 "target": "decrease every cycle until 0 or source-labeled historical",
                 "source": "MIM_TOD_TRAINING_SCOREBOARD.latest.json",
+            },
+            {
+                "metric": "Pending MIM Deploy Payloads",
+                "current": pending_deploy_current,
+                "target": "0 pending, or every payload has deployed/verified/closed evidence",
+                "source": "MIM_TOD_TRAINING_SCOREBOARD.latest.json",
+            },
+            {
+                "metric": "TOD Result Publisher Truth",
+                "current": result_publisher_truth_current,
+                "target": "listener TOD_MIM_TASK_RESULT does not contradict runtime TOD_EXECUTION_RESULT for the same request",
+                "source": context_sync_validation_path.name,
+            },
+            {
+                "metric": "TOD Result Publisher Next Action",
+                "current": result_publisher_truth_next_action,
+                "target": "publisher fix is reflected in live latest artifacts before success is credited",
+                "source": context_sync_validation_path.name,
+            },
+            {
+                "metric": "MIM TOD Request Shape",
+                "current": mim_tod_request_shape_current,
+                "target": "implementation-shaped request with one target file, patch plan, validation plan, and changed-files success gate",
+                "source": tod_task_request_path.name,
+            },
+            {
+                "metric": "MIM TOD Request Shape Next Action",
+                "current": mim_tod_request_shape_next_action,
+                "target": "MIM dispatches a bounded executable task instead of diagnostic/status-only work",
+                "source": tod_task_request_path.name,
             },
             {
                 "metric": "Open MIM/TOD Dialog Debt",

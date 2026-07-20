@@ -27,12 +27,84 @@ $LogDir = Join-Path $Root "runtime\logs"
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
+function Invoke-PythonCapture {
+  param([Parameter(Mandatory = $true)][string[]]$Arguments)
+
+  $previousErrorActionPreference = $ErrorActionPreference
+  try {
+    $ErrorActionPreference = "Continue"
+    & python @Arguments 2>&1
+  }
+  finally {
+    $ErrorActionPreference = $previousErrorActionPreference
+  }
+}
+
 function Get-DotEnvValue {
   param([string]$Name)
   if (-not (Test-Path $EnvPath)) { return "" }
   $line = Get-Content $EnvPath | Where-Object { $_ -match "^\s*$([regex]::Escape($Name))\s*=" } | Select-Object -First 1
   if (-not $line) { return "" }
   return (($line -split "=", 2)[1]).Trim().Trim('"').Trim("'")
+}
+
+function Ensure-PoshSshModulePath {
+  $candidateRoots = @(
+    (Join-Path $HOME 'OneDrive\Documents\WindowsPowerShell\Modules'),
+    (Join-Path $HOME 'Documents\WindowsPowerShell\Modules'),
+    (Join-Path $HOME 'OneDrive\Documents\PowerShell\Modules'),
+    (Join-Path $HOME 'Documents\PowerShell\Modules')
+  )
+
+  $pathParts = @([string]$env:PSModulePath -split [regex]::Escape([System.IO.Path]::PathSeparator) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+  foreach ($candidateRoot in $candidateRoots) {
+    if ((Test-Path -Path (Join-Path $candidateRoot 'Posh-SSH')) -and -not ($pathParts -contains $candidateRoot)) {
+      $pathParts = @($candidateRoot) + $pathParts
+    }
+  }
+  $env:PSModulePath = ($pathParts | Select-Object -Unique) -join [System.IO.Path]::PathSeparator
+}
+
+function New-MimSftpSession {
+  param(
+    [Parameter(Mandatory = $true)][string]$HostName,
+    [Parameter(Mandatory = $true)][string]$UserName,
+    [Parameter(Mandatory = $true)][int]$Port,
+    [Parameter(Mandatory = $true)]$Credential
+  )
+
+  Ensure-PoshSshModulePath
+  Import-Module Posh-SSH -ErrorAction Stop | Out-Null
+  return New-SFTPSession -ComputerName $HostName -Port $Port -Credential $Credential -AcceptKey -ConnectionTimeout 30000
+}
+
+function Close-MimSftpSession {
+  param($Session)
+  if ($null -eq $Session) { return }
+  try {
+    Remove-SFTPSession -SessionId ([int]$Session.SessionId) | Out-Null
+  } catch {
+  }
+}
+
+function Copy-RemoteSharedFileToLocal {
+  param(
+    [Parameter(Mandatory = $true)]$Session,
+    [Parameter(Mandatory = $true)][string]$RemotePath,
+    [Parameter(Mandatory = $true)][string]$DestinationDir
+  )
+
+  Get-SFTPItem -SessionId ([int]$Session.SessionId) -Path $RemotePath -Destination $DestinationDir -Force -ErrorAction Stop | Out-Null
+}
+
+function Copy-LocalFileToRemoteShared {
+  param(
+    [Parameter(Mandatory = $true)]$Session,
+    [Parameter(Mandatory = $true)][string]$LocalPath,
+    [Parameter(Mandatory = $true)][string]$RemoteDir
+  )
+
+  Set-SFTPItem -SessionId ([int]$Session.SessionId) -Path $LocalPath -Destination $RemoteDir -Force -ErrorAction Stop | Out-Null
 }
 
 $hostName = Get-DotEnvValue "MIM_SSH_HOST"
@@ -48,9 +120,11 @@ if (-not $AgentMimEnvPath) {
 }
 
 if ($hostName -and $userName -and $password) {
+  $sftpSession = $null
   try {
     $sec = ConvertTo-SecureString $password -AsPlainText -Force
     $cred = New-Object System.Management.Automation.PSCredential($userName, $sec)
+    $sftpSession = New-MimSftpSession -HostName $hostName -UserName $userName -Port ([int]$portValue) -Credential $cred
     $tmpPull = Join-Path $LogDir "mim_tod_reflection_pull"
     New-Item -ItemType Directory -Force -Path $tmpPull | Out-Null
     $remoteArtifacts = @(
@@ -67,7 +141,7 @@ if ($hostName -and $userName -and $password) {
     )
     foreach ($artifactName in $remoteArtifacts) {
       try {
-        Get-SCPItem -ComputerName $hostName -Port ([int]$portValue) -Credential $cred -AcceptKey -ConnectionTimeout 30 -Path "/home/testpilot/mim/runtime/shared/$artifactName" -PathType File -Destination $tmpPull -Force | Out-Null
+        Copy-RemoteSharedFileToLocal -Session $sftpSession -RemotePath "/home/testpilot/mim/runtime/shared/$artifactName" -DestinationDir $tmpPull
         $pulled = Join-Path $tmpPull $artifactName
         if (Test-Path $pulled) {
           Copy-Item -LiteralPath $pulled -Destination (Join-Path $OutDir $artifactName) -Force
@@ -88,7 +162,7 @@ if ($hostName -and $userName -and $password) {
       $dialogDir = Join-Path $Root "shared_state\dialog"
       New-Item -ItemType Directory -Force -Path $dialogDir | Out-Null
       $dialogIndexName = "MIM_TOD_DIALOG.sessions.latest.json"
-      Get-SCPItem -ComputerName $hostName -Port ([int]$portValue) -Credential $cred -AcceptKey -ConnectionTimeout 30 -Path "/home/testpilot/mim/runtime/shared/dialog/$dialogIndexName" -PathType File -Destination $dialogDir -Force | Out-Null
+      Copy-RemoteSharedFileToLocal -Session $sftpSession -RemotePath "/home/testpilot/mim/runtime/shared/dialog/$dialogIndexName" -DestinationDir $dialogDir
 
       $dialogIndexPath = Join-Path $dialogDir $dialogIndexName
       if (Test-Path $dialogIndexPath) {
@@ -131,7 +205,7 @@ if ($hostName -and $userName -and $password) {
           $remoteLatest = $remoteJsonl -replace "\.jsonl$", ".latest.json"
           foreach ($remoteDialogFile in @($remoteLatest, $remoteJsonl)) {
             try {
-              Get-SCPItem -ComputerName $hostName -Port ([int]$portValue) -Credential $cred -AcceptKey -ConnectionTimeout 30 -Path $remoteDialogFile -PathType File -Destination $dialogDir -Force | Out-Null
+              Copy-RemoteSharedFileToLocal -Session $sftpSession -RemotePath $remoteDialogFile -DestinationDir $dialogDir
             } catch {
               "Dialog pull failed for ${remoteDialogFile}: $([string]::Join(' ', @($_.Exception.Message -split '\s+')))" | Tee-Object -FilePath (Join-Path $LogDir "mim_tod_training_scoreboard.dialog_pull_failed.log") -Append | Out-Null
             }
@@ -143,6 +217,8 @@ if ($hostName -and $userName -and $password) {
     }
   } catch {
     "Reflection pull failed: $([string]::Join(' ', @($_.Exception.Message -split '\s+')))" | Tee-Object -FilePath (Join-Path $LogDir "mim_tod_training_scoreboard.reflection_pull_failed.log") -Append | Out-Null
+  } finally {
+    Close-MimSftpSession -Session $sftpSession
   }
 }
 
@@ -173,7 +249,7 @@ $smokeArgsList = @(
   "--base-url", $StudioBaseUrl,
   "--out-dir", $OutDir
 )
-$smokeOutput = & python @smokeArgsList 2>&1
+$smokeOutput = Invoke-PythonCapture -Arguments $smokeArgsList
 $smokeOutput | Tee-Object -FilePath (Join-Path $LogDir "mim_durability_smoke_v2.last.log") | Out-Null
 if ($LASTEXITCODE -ne 0) {
   "Judgment smoke failed; continuing scoreboard with failed smoke evidence: $smokeOutput" | Tee-Object -FilePath (Join-Path $LogDir "mim_durability_smoke_v2.failed.log") -Append | Out-Null
@@ -184,7 +260,7 @@ $typoArgsList = @(
   "--base-url", $BaseUrl,
   "--out-dir", $OutDir
 )
-$typoOutput = & python @typoArgsList 2>&1
+$typoOutput = Invoke-PythonCapture -Arguments $typoArgsList
 $typoOutput | Tee-Object -FilePath (Join-Path $LogDir "mim_typo_tolerant_intent_smoke.last.log") | Out-Null
 if ($LASTEXITCODE -ne 0) {
   "Typo tolerance smoke failed; continuing scoreboard with failed smoke evidence: $typoOutput" | Tee-Object -FilePath (Join-Path $LogDir "mim_typo_tolerant_intent_smoke.failed.log") -Append | Out-Null
@@ -194,7 +270,7 @@ $operatorLiveArgsList = @(
   $OperatorImpactLiveScript,
   "--studio-base-url", $StudioBaseUrl
 )
-$operatorLiveOutput = & python @operatorLiveArgsList 2>&1
+$operatorLiveOutput = Invoke-PythonCapture -Arguments $operatorLiveArgsList
 $operatorLiveOutput | Tee-Object -FilePath (Join-Path $LogDir "mim_operator_impact_live_10.last.log") | Out-Null
 if ($LASTEXITCODE -ne 0) {
   "Operator impact live-10 scoring failed; continuing with failed evidence: $operatorLiveOutput" | Tee-Object -FilePath (Join-Path $LogDir "mim_operator_impact_live_10.failed.log") -Append | Out-Null
@@ -215,7 +291,7 @@ $structuralArgsList = @(
   "--live-base-url", $MimTodBaseUrl,
   "--timeout", "60"
 )
-$structuralOutput = & python @structuralArgsList 2>&1
+$structuralOutput = Invoke-PythonCapture -Arguments $structuralArgsList
 $structuralOutput | Tee-Object -FilePath (Join-Path $LogDir "mim_structural_reasoning_diversity.last.log") | Out-Null
 if ($LASTEXITCODE -ne 0) {
   "Structural reasoning diversity scoring failed; continuing with failed evidence: $structuralOutput" | Tee-Object -FilePath (Join-Path $LogDir "mim_structural_reasoning_diversity.failed.log") -Append | Out-Null
@@ -226,7 +302,7 @@ $contextArgsList = @(
   "--live-base-url", $MimTodBaseUrl,
   "--timeout", "60"
 )
-$contextOutput = & python @contextArgsList 2>&1
+$contextOutput = Invoke-PythonCapture -Arguments $contextArgsList
 $contextOutput | Tee-Object -FilePath (Join-Path $LogDir "mim_context_grounding.last.log") | Out-Null
 if ($LASTEXITCODE -ne 0) {
   "Context-grounding scoring failed; continuing with failed evidence: $contextOutput" | Tee-Object -FilePath (Join-Path $LogDir "mim_context_grounding.failed.log") -Append | Out-Null
@@ -242,13 +318,13 @@ $crossSurfaceArgsList = @(
 if ($AgentMimEnvPath) {
   $crossSurfaceArgsList += @("--agentmim-env", $AgentMimEnvPath)
 }
-$crossSurfaceOutput = & python @crossSurfaceArgsList 2>&1
+$crossSurfaceOutput = Invoke-PythonCapture -Arguments $crossSurfaceArgsList
 $crossSurfaceOutput | Tee-Object -FilePath (Join-Path $LogDir "mim_structural_reasoning_cross_surface.last.log") | Out-Null
 if ($LASTEXITCODE -ne 0) {
   "Cross-surface structural reasoning scoring failed; continuing with failed evidence: $crossSurfaceOutput" | Tee-Object -FilePath (Join-Path $LogDir "mim_structural_reasoning_cross_surface.failed.log") -Append | Out-Null
 }
 
-$operatorScorecardOutput = & python $OperatorImpactScorecardScript 2>&1
+$operatorScorecardOutput = Invoke-PythonCapture -Arguments @($OperatorImpactScorecardScript)
 $operatorScorecardOutput | Tee-Object -FilePath (Join-Path $LogDir "mim_operator_impact_scorecard.last.log") | Out-Null
 if ($LASTEXITCODE -ne 0) {
   "Operator impact scorecard build failed; continuing with failed evidence: $operatorScorecardOutput" | Tee-Object -FilePath (Join-Path $LogDir "mim_operator_impact_scorecard.failed.log") -Append | Out-Null
@@ -258,25 +334,25 @@ if ($OperatorEstimatedHours -gt 0) {
   $argsList += @("--operator-estimated-hours", [string]$OperatorEstimatedHours)
 }
 
-$pythonOutput = & python @argsList 2>&1
+$pythonOutput = Invoke-PythonCapture -Arguments $argsList
 $pythonOutput | Tee-Object -FilePath (Join-Path $LogDir "mim_tod_training_scoreboard.last.log") | Out-Null
 if ($LASTEXITCODE -ne 0) {
   throw "Scoreboard generation failed: $pythonOutput"
 }
 
-$operatorLiveOutput = & python @operatorLiveArgsList 2>&1
+$operatorLiveOutput = Invoke-PythonCapture -Arguments $operatorLiveArgsList
 $operatorLiveOutput | Tee-Object -FilePath (Join-Path $LogDir "mim_operator_impact_live_10.after_scoreboard.last.log") | Out-Null
 if ($LASTEXITCODE -ne 0) {
-  throw "Operator impact live-10 scoring after scoreboard failed: $operatorLiveOutput"
+  "Operator impact live-10 scoring after scoreboard failed; publishing with failed evidence: $operatorLiveOutput" | Tee-Object -FilePath (Join-Path $LogDir "mim_operator_impact_live_10.failed.log") -Append | Out-Null
 }
 else {
   $missingOperatorLiveArtifacts = @($operatorLiveExpectedArtifacts | Where-Object { -not (Test-Path $_) })
   if (@($missingOperatorLiveArtifacts).Count -gt 0) {
-    throw "Operator impact live-10 scoring after scoreboard exited successfully but did not write expected artifacts: $($missingOperatorLiveArtifacts -join ', ')"
+    "Operator impact live-10 scoring after scoreboard exited successfully but did not write expected artifacts: $($missingOperatorLiveArtifacts -join ', ')" | Tee-Object -FilePath (Join-Path $LogDir "mim_operator_impact_live_10.failed.log") -Append | Out-Null
   }
 }
 
-$operatorScorecardOutput = & python $OperatorImpactScorecardScript 2>&1
+$operatorScorecardOutput = Invoke-PythonCapture -Arguments @($OperatorImpactScorecardScript)
 $operatorScorecardOutput | Tee-Object -FilePath (Join-Path $LogDir "mim_operator_impact_scorecard.after_scoreboard.last.log") | Out-Null
 if ($LASTEXITCODE -ne 0) {
   "Operator impact scorecard rebuild after scoreboard failed; continuing with failed evidence: $operatorScorecardOutput" | Tee-Object -FilePath (Join-Path $LogDir "mim_operator_impact_scorecard.failed.log") -Append | Out-Null
@@ -290,11 +366,11 @@ else {
   $operatorImpactScore = [double]$operatorImpactScorecard.operator_impact_score
   $operatorImpactSamples = [int]$operatorImpactScorecard.sample_count
   if ($operatorImpactScore -lt 8 -or $operatorImpactSamples -lt 10) {
-    throw "Operator impact scorecard after scoreboard is below publish target: score=$operatorImpactScore samples=$operatorImpactSamples"
+    "Operator impact scorecard after scoreboard is below publish target; publishing truthful action-required evidence: score=$operatorImpactScore samples=$operatorImpactSamples" | Tee-Object -FilePath (Join-Path $LogDir "mim_operator_impact_scorecard.failed.log") -Append | Out-Null
   }
 }
 
-$pythonOutput = & python @argsList 2>&1
+$pythonOutput = Invoke-PythonCapture -Arguments $argsList
 $pythonOutput | Tee-Object -FilePath (Join-Path $LogDir "mim_tod_training_scoreboard.after_operator_refresh.last.log") | Out-Null
 if ($LASTEXITCODE -ne 0) {
   throw "Scoreboard regeneration after operator-impact refresh failed: $pythonOutput"
@@ -315,13 +391,13 @@ foreach ($optionalPulledArtifact in @("TOD_PROACTIVE_TASK.latest.json", "TOD_PRO
   }
 }
 
-$realMovementOutput = & python $RealMovementScript 2>&1
+$realMovementOutput = Invoke-PythonCapture -Arguments @($RealMovementScript)
 $realMovementOutput | Tee-Object -FilePath (Join-Path $LogDir "mim_tod_real_movement_scorecard.last.log") | Out-Null
 if ($LASTEXITCODE -ne 0) {
   "Real movement scorecard build failed; continuing with failed evidence: $realMovementOutput" | Tee-Object -FilePath (Join-Path $LogDir "mim_tod_real_movement_scorecard.failed.log") -Append | Out-Null
 }
 
-$gateOutput = & python $InitiativeGateScript "--out-dir" $OutDir 2>&1
+$gateOutput = Invoke-PythonCapture -Arguments @($InitiativeGateScript, "--out-dir", $OutDir)
 $gateOutput | Tee-Object -FilePath (Join-Path $LogDir "mim_tod_training_initiative_gate.last.log") | Out-Null
 if ($LASTEXITCODE -ne 0) {
   throw "Training initiative gate generation failed: $gateOutput"
@@ -337,6 +413,7 @@ if (-not $hostName -or -not $userName -or -not $password) {
 
 $sec = ConvertTo-SecureString $password -AsPlainText -Force
 $cred = New-Object System.Management.Automation.PSCredential($userName, $sec)
+$publishSftpSession = $null
 $files = @(
   @{ Path = (Join-Path $OutDir "MIM_TOD_TRAINING_SCOREBOARD.latest.json"); Required = $true },
   @{ Path = (Join-Path $OutDir "MIM_TOD_TRAINING_SCOREBOARD.latest.md"); Required = $true },
@@ -385,10 +462,15 @@ foreach ($fileSpec in $files) {
   $lastPublishError = ""
   for ($attempt = 1; $attempt -le 3 -and -not $published; $attempt++) {
     try {
-      Set-SCPItem -ComputerName $hostName -Port ([int]$portValue) -Credential $cred -AcceptKey -ConnectionTimeout 30 -Path $file -Destination "/home/testpilot/mim/runtime/shared" -Force | Out-Null
+      if ($null -eq $publishSftpSession) {
+        $publishSftpSession = New-MimSftpSession -HostName $hostName -UserName $userName -Port ([int]$portValue) -Credential $cred
+      }
+      Copy-LocalFileToRemoteShared -Session $publishSftpSession -LocalPath $file -RemoteDir "/home/testpilot/mim/runtime/shared"
       $published = $true
     } catch {
       $lastPublishError = [string]::Join(" ", @($_.Exception.Message -split "\s+"))
+      Close-MimSftpSession -Session $publishSftpSession
+      $publishSftpSession = $null
       Start-Sleep -Seconds (3 * $attempt)
     }
   }
@@ -396,3 +478,4 @@ foreach ($fileSpec in $files) {
     "Publish failed for ${file}: $lastPublishError" | Tee-Object -FilePath (Join-Path $LogDir "mim_tod_training_scoreboard.publish_failed.log") -Append | Out-Null
   }
 }
+Close-MimSftpSession -Session $publishSftpSession

@@ -9,6 +9,7 @@ against /gateway/intake to produce today's communication scores.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import re
 import urllib.request
@@ -19,7 +20,9 @@ from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 TRAINING_ROOT = ROOT / "runtime_remote_training"
+CONTEXT_SYNC_ROOT = ROOT / "tod" / "out" / "context-sync"
 BLOCKER_ROOT = TRAINING_ROOT / "blocked_objective_training"
+DEPLOY_PAYLOADS_ROOT = TRAINING_ROOT / "deploy_payloads"
 RUNTIME_SHARED_ROOT = ROOT / "runtime" / "shared"
 TOD_RESULT_ARTIFACT_ROOTS = [
     TRAINING_ROOT / "tod_result_artifacts",
@@ -115,6 +118,509 @@ def training_source_path(name: str) -> Path:
     if shared_path.exists():
         return shared_path
     return TRAINING_ROOT / name
+
+
+def _coerce_float(value: Any) -> float | None:
+    try:
+        if value is None or value == "":
+            return None
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _current_task_request_snapshot() -> dict[str, Any]:
+    return load_newest_json(
+        [
+            CONTEXT_SYNC_ROOT / "listener" / "MIM_TOD_TASK_REQUEST.latest.json",
+            CONTEXT_SYNC_ROOT / "ssh-shared" / "MIM_TOD_TASK_REQUEST.latest.json",
+        ]
+    )
+
+
+def _target_files_from_request(request: dict[str, Any]) -> tuple[list[str], str]:
+    raw = request.get("target_files")
+    raw_type = type(raw).__name__ if raw is not None else "missing"
+    if isinstance(raw, list):
+        return [str(item).strip() for item in raw if str(item or "").strip()], raw_type
+    if isinstance(raw, str) and raw.strip():
+        return [raw.strip()], raw_type
+    return [], raw_type
+
+
+def task_request_shape_snapshot(request: dict[str, Any]) -> dict[str, Any]:
+    if not request:
+        return {
+            "present": False,
+            "implementation_shaped": False,
+            "malformed_reasons": ["missing_request"],
+        }
+    completion_gate = request.get("completion_gate") if isinstance(request.get("completion_gate"), dict) else {}
+    target_file = str(request.get("target_file") or "").strip()
+    target_files, target_files_type = _target_files_from_request(request)
+    one_target_file = bool(target_file) or len(target_files) == 1
+    task_class = str(request.get("task_class") or "").strip()
+    validation_only = bool(request.get("validation_only"))
+    changed_required = bool(completion_gate.get("changed_files_required_for_success"))
+    malformed_reasons: list[str] = []
+    if task_class != "implementation":
+        malformed_reasons.append(f"task_class={task_class or 'missing'}")
+    if validation_only:
+        malformed_reasons.append("validation_only=true")
+    if not changed_required:
+        malformed_reasons.append("changed_files_required_for_success=false")
+    if not one_target_file:
+        malformed_reasons.append("one_target_file=false")
+    if request.get("target_files") is not None and not isinstance(request.get("target_files"), (list, str)):
+        malformed_reasons.append(f"target_files_type={target_files_type}")
+    implementation_shaped = (
+        task_class == "implementation"
+        and changed_required
+        and not validation_only
+        and one_target_file
+    )
+    return {
+        "present": True,
+        "request_id": str(request.get("request_id") or request.get("task_id") or "").strip(),
+        "objective_id": str(request.get("objective_id") or "").strip(),
+        "task_class": task_class or "missing",
+        "validation_only": validation_only,
+        "changed_files_required_for_success": changed_required,
+        "target_file": target_file,
+        "target_files_count": len(target_files),
+        "target_files_type": target_files_type,
+        "one_target_file": one_target_file,
+        "implementation_shaped": implementation_shaped,
+        "malformed_reasons": malformed_reasons,
+    }
+
+
+def deploy_payload_verification_snapshot(payload: dict[str, Any]) -> dict[str, Any]:
+    deployment_verification = payload.get("deployment_verification")
+    if isinstance(deployment_verification, dict):
+        deployment_status = str(deployment_verification.get("status") or "").strip().lower()
+        if deployment_status in {
+            "deployed",
+            "deployed_and_verified",
+            "verified",
+            "verified_remote",
+            "closed",
+            "superseded",
+            "cancelled",
+        }:
+            evidence_bits = _string_list(deployment_verification.get("remote_validation"))
+            evidence = "; ".join(evidence_bits[:3])
+            if not evidence:
+                evidence = str(deployment_verification.get("deployment_path") or "").strip()
+            return {
+                "verification_status": deployment_status,
+                "verification_reason": (
+                    f"deployment_verification.status={deployment_status}; "
+                    "treating this payload as no longer pending"
+                ),
+                "verification_evidence": evidence or "deployment_verification",
+            }
+        if deployment_status in {
+            "files_deployed_remote_validation_blocked",
+            "remote_focused_verified_live_probe_blocked",
+            "remote_validated_services_listening_probe_blocked",
+            "remote_validation_blocked",
+            "validation_blocked",
+        }:
+            blocker = str(
+                deployment_verification.get("remote_validation_blocker")
+                or deployment_verification.get("live_probe_blocker")
+                or ""
+            ).strip()
+            remaining = _string_list(deployment_verification.get("remaining_validation"))
+            evidence_bits = _string_list(deployment_verification.get("remote_validation")) or _string_list(
+                deployment_verification.get("local_validation")
+            )
+            evidence = "; ".join(evidence_bits[:2])
+            verified_phrase = (
+                "remote focused validation passed, but live service probing is still blocked"
+                if deployment_status == "remote_focused_verified_live_probe_blocked"
+                else "files were deployed through the existing path, but live remote validation is still blocked"
+            )
+            if deployment_status == "remote_validated_services_listening_probe_blocked":
+                verified_phrase = (
+                    "remote validation passed and user services are listening, but HTTP route proof is still blocked"
+                )
+            return {
+                "verification_status": deployment_status,
+                "verification_reason": (
+                    verified_phrase
+                    + (f": {blocker}" if blocker else "")
+                ),
+                "verification_evidence": evidence or "; ".join(remaining[:2]) or "deployment_verification",
+            }
+
+    objective_id = str(payload.get("objective_id") or "").strip()
+    objective_key = objective_id.upper()
+    if objective_key == "MIM-CONVERSATION-MODE-SELECTION-V2":
+        operator = load_training_json("MIM_OPERATOR_IMPACT_SCORECARD.latest.json")
+        score = _coerce_float(operator.get("operator_impact_score"))
+        sample_count = operator.get("sample_count")
+        pass_count = operator.get("pass_count")
+        if score is not None and score >= 8:
+            return {
+                "verification_status": "partially_verified",
+                "verification_reason": (
+                    f"operator impact score is {score:.1f}/10; still requires durability smoke and internal-leakage evidence"
+                ),
+                "verification_evidence": "MIM_OPERATOR_IMPACT_SCORECARD.latest.json",
+            }
+        if score is not None:
+            return {
+                "verification_status": "not_verified",
+                "verification_reason": (
+                    f"operator impact score is still {score:.1f}/10; acceptance requires >=8.0 "
+                    f"(fully passing replies {pass_count}/{sample_count})"
+                ),
+                "verification_evidence": "MIM_OPERATOR_IMPACT_SCORECARD.latest.json",
+            }
+        return {
+            "verification_status": "not_verified",
+            "verification_reason": "operator impact score evidence is missing",
+            "verification_evidence": "MIM_OPERATOR_IMPACT_SCORECARD.latest.json",
+        }
+    if objective_key in {
+        "MIM-TOD-REMEDIATION-DISPATCH-BOUNDED-ACTION-V1",
+        "MIM-STALE-REMEDIATION-MATERIALIZATION-V1",
+    }:
+        task_request = _current_task_request_snapshot()
+        shape = task_request_shape_snapshot(task_request)
+        if shape.get("implementation_shaped"):
+            return {
+                "verification_status": "partially_verified",
+                "verification_reason": (
+                    "current live task request is implementation-shaped; still requires post-deploy tests, TOD receipt, and execution evidence"
+                ),
+                "verification_evidence": "MIM_TOD_TASK_REQUEST.latest.json",
+            }
+        if task_request:
+            reason_fields = ", ".join(shape.get("malformed_reasons") or [])
+            return {
+                "verification_status": "not_verified",
+                "verification_reason": (
+                    "current live task request is not implementation-shaped "
+                    f"({reason_fields})"
+                ),
+                "verification_evidence": "MIM_TOD_TASK_REQUEST.latest.json",
+            }
+        return {
+            "verification_status": "not_verified",
+            "verification_reason": "current MIM_TOD_TASK_REQUEST.latest.json evidence is missing",
+            "verification_evidence": "MIM_TOD_TASK_REQUEST.latest.json",
+        }
+    return {
+        "verification_status": "pending_manual_verification",
+        "verification_reason": "no deploy-specific verifier is registered for this objective",
+        "verification_evidence": "",
+    }
+
+
+def bridge_materialization_state_snapshot() -> dict[str, Any]:
+    request_sources = [
+        ("listener", CONTEXT_SYNC_ROOT / "listener" / "MIM_TOD_TASK_REQUEST.latest.json"),
+        ("ssh-shared", CONTEXT_SYNC_ROOT / "ssh-shared" / "MIM_TOD_TASK_REQUEST.latest.json"),
+        ("runtime-shared", RUNTIME_SHARED_ROOT / "MIM_TOD_TASK_REQUEST.latest.json"),
+    ]
+    request_copies: list[dict[str, Any]] = []
+    for source_name, source_path in request_sources:
+        payload = load_json(source_path)
+        shape = task_request_shape_snapshot(payload)
+        shape["source"] = source_name
+        shape["path"] = str(source_path.relative_to(ROOT)) if source_path.is_relative_to(ROOT) else str(source_path)
+        request_copies.append(shape)
+    listener_request = load_json(CONTEXT_SYNC_ROOT / "listener" / "MIM_TOD_TASK_REQUEST.latest.json")
+    ssh_request = load_json(CONTEXT_SYNC_ROOT / "ssh-shared" / "MIM_TOD_TASK_REQUEST.latest.json")
+    runtime_request = load_json(RUNTIME_SHARED_ROOT / "MIM_TOD_TASK_REQUEST.latest.json")
+    command_status = load_json(CONTEXT_SYNC_ROOT / "listener" / "TOD_MIM_COMMAND_STATUS.latest.json")
+    execution_result = load_json(RUNTIME_SHARED_ROOT / "TOD_EXECUTION_RESULT.latest.json")
+    request = listener_request or ssh_request or runtime_request
+    shape = task_request_shape_snapshot(request)
+    implementation_shaped = bool(shape.get("implementation_shaped"))
+    command_acted = bool(command_status.get("acted_upon")) or str(command_status.get("status") or "").lower() == "succeeded"
+    execution_status = str(execution_result.get("status") or "").strip()
+    reason_code = str(execution_result.get("reason_code") or "").strip()
+    transport_active = bool(request) and (command_acted or bool(execution_result))
+    if implementation_shaped:
+        status = "existing_bridge_active_implementation_request_visible" if transport_active else "implementation_request_visible"
+        blocker = ""
+        required_next_action = "Let TOD execute the implementation-shaped request and validate changed-file evidence."
+    elif request and transport_active:
+        status = "existing_bridge_active_materialization_blocked"
+        blocker = "request_materialization_missing_bounded_edit_fields"
+        required_next_action = (
+            "Apply the full-file-safe MIM materializer repair through the existing source/deploy path, "
+            "then materialize partial hunk payloads against live files; do not add another SSH channel or transport."
+        )
+    elif request:
+        status = "request_visible_transport_ack_unproven"
+        blocker = "bridge_ack_or_execution_evidence_missing"
+        required_next_action = "Verify existing listener acknowledgement/result artifacts before changing transport."
+    else:
+        status = "request_missing"
+        blocker = "no_current_mim_tod_task_request"
+        required_next_action = "Refresh the existing shared bridge artifacts before diagnosing request materialization."
+    return {
+        "status": status,
+        "transport": "existing managed listener over shared MIM_TOD_TASK_REQUEST.latest.json",
+        "transport_active": transport_active,
+        "no_new_channel_required": True,
+        "blocker": blocker,
+        "required_next_action": required_next_action,
+        "current_request": {
+            "request_id": shape.get("request_id", ""),
+            "objective_id": shape.get("objective_id", ""),
+            "task_class": shape.get("task_class", "missing"),
+            "validation_only": bool(shape.get("validation_only")),
+            "changed_files_required_for_success": bool(shape.get("changed_files_required_for_success")),
+            "target_file": shape.get("target_file", ""),
+            "target_files_count": shape.get("target_files_count", 0),
+            "target_files_type": shape.get("target_files_type", "missing"),
+            "one_target_file": bool(shape.get("one_target_file")),
+            "implementation_shaped": implementation_shaped,
+            "malformed_reasons": shape.get("malformed_reasons", []),
+        },
+        "request_copies": request_copies,
+        "tod_execution": {
+            "status": execution_status,
+            "reason_code": reason_code,
+        },
+        "evidence": [
+            "tod/out/context-sync/listener/MIM_TOD_TASK_REQUEST.latest.json",
+            "tod/out/context-sync/listener/TOD_MIM_COMMAND_STATUS.latest.json",
+            "runtime/shared/TOD_EXECUTION_RESULT.latest.json",
+        ],
+    }
+
+
+def deploy_payload_local_patch_readiness(payload: dict[str, Any]) -> dict[str, Any]:
+    local_refs = _string_list(payload.get("local_reference_files"))
+    if not local_refs:
+        local_ref = str(payload.get("local_reference_file") or "").strip()
+        local_refs = [local_ref] if local_ref else []
+    checked: list[dict[str, Any]] = []
+    missing: list[str] = []
+    for ref in local_refs:
+        path = Path(ref)
+        if not path.is_absolute():
+            path = ROOT / path
+        exists = path.exists() and path.is_file()
+        if not exists:
+            missing.append(ref)
+        checked.append(
+            {
+                "path": ref,
+                "exists": exists,
+            }
+        )
+    if not local_refs:
+        status = "no_local_reference_files_declared"
+    elif missing:
+        status = "missing_local_reference_files"
+    else:
+        status = "local_reference_ready"
+    return {
+        "status": status,
+        "ready": bool(local_refs) and not missing,
+        "checked": checked,
+        "missing": missing,
+        "note": "Readiness only proves local patch material exists; it does not prove live deployment.",
+    }
+
+
+def _quote_powershell_arg(value: str) -> str:
+    return "'" + value.replace("'", "''") + "'"
+
+
+def _local_reference_files(payload: dict[str, Any]) -> list[str]:
+    refs = _string_list(payload.get("local_reference_files"))
+    if refs:
+        return refs
+    ref = str(payload.get("local_reference_file") or "").strip()
+    return [ref] if ref else []
+
+
+def _target_remote_files(payload: dict[str, Any]) -> list[str]:
+    targets = payload.get("target_remote_files")
+    if isinstance(targets, list):
+        return [str(item).strip() for item in targets if str(item).strip()]
+    target = str(payload.get("target_remote_file") or "").strip()
+    return [target] if target else []
+
+
+def deploy_file_application_plan(
+    local_refs: list[str],
+    remote_targets: list[str],
+    payload: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    payload = payload or {}
+    deploy_text = " ".join(
+        str(payload.get(key) or "")
+        for key in ("warning", "purpose", "deploy_note", "transport_note")
+    ).lower()
+    partial_patch_required = (
+        "do not upload" in deploy_text
+        or "do not blindly upload" in deploy_text
+        or "apply only" in deploy_text
+        or "route-order hunk" in deploy_text
+        or "hunk" in deploy_text
+    )
+    pairs: list[dict[str, Any]] = []
+    missing: list[str] = []
+    count_mismatch = len(local_refs) != len(remote_targets)
+    for index, local_ref in enumerate(local_refs):
+        remote_target = remote_targets[index] if index < len(remote_targets) else ""
+        path = Path(local_ref)
+        if not path.is_absolute():
+            path = ROOT / path
+        exists = path.exists() and path.is_file()
+        sha256 = ""
+        size_bytes = None
+        if exists:
+            data = path.read_bytes()
+            sha256 = hashlib.sha256(data).hexdigest()
+            size_bytes = len(data)
+        else:
+            missing.append(local_ref)
+        command = ""
+        if remote_target and not partial_patch_required:
+            command = (
+                "powershell -NoProfile -File scripts\\Send-TODMimScript.ps1 "
+                f"-LocalPath {_quote_powershell_arg(local_ref)} "
+                f"-RemotePath {_quote_powershell_arg(remote_target)}"
+            )
+        pairs.append(
+            {
+                "local_path": local_ref,
+                "remote_path": remote_target,
+                "local_exists": exists,
+                "sha256": sha256,
+                "size_bytes": size_bytes,
+                "apply_command": command,
+            }
+        )
+    ready = (
+        bool(pairs)
+        and not partial_patch_required
+        and not missing
+        and not count_mismatch
+        and all(pair.get("remote_path") for pair in pairs)
+    )
+    if partial_patch_required:
+        status = "partial_patch_hunk_required"
+    elif ready:
+        status = "ready_for_existing_send_script"
+    elif not pairs:
+        status = "no_file_pairs_declared"
+    elif count_mismatch:
+        status = "local_remote_file_count_mismatch"
+    elif missing:
+        status = "missing_local_reference_files"
+    else:
+        status = "remote_target_missing"
+    return {
+        "status": status,
+        "ready": ready,
+        "pairs": pairs,
+        "missing": missing,
+        "count_mismatch": count_mismatch,
+        "partial_patch_required": partial_patch_required,
+        "apply_commands": [str(pair.get("apply_command") or "") for pair in pairs if pair.get("apply_command")],
+        "note": (
+            "Payload requires a partial live-file hunk; full-file Send-TODMimScript upload is intentionally withheld."
+            if partial_patch_required
+            else "Commands use the existing Send-TODMimScript.ps1 path; this manifest does not prove live deployment."
+        ),
+    }
+
+
+def pending_deploy_payload_snapshot() -> dict[str, Any]:
+    terminal_statuses = {
+        "deployed",
+        "deployed_and_verified",
+        "verified",
+        "verified_remote",
+        "closed",
+        "superseded",
+        "cancelled",
+    }
+    payloads: list[dict[str, Any]] = []
+    if not DEPLOY_PAYLOADS_ROOT.exists():
+        return {
+            "pending_count": 0,
+            "latest": {},
+            "pending_payloads": [],
+            "source": str(DEPLOY_PAYLOADS_ROOT),
+        }
+    for path in sorted(DEPLOY_PAYLOADS_ROOT.glob("*.json")):
+        payload = load_json(path)
+        if str(payload.get("artifact_type") or "").strip() != "deploy_patch_handoff":
+            continue
+        deployment_verification = payload.get("deployment_verification")
+        verified_status = (
+            str(deployment_verification.get("status") or "").strip().lower()
+            if isinstance(deployment_verification, dict)
+            else ""
+        )
+        status = str(payload.get("status") or payload.get("deployment_status") or "").strip().lower()
+        if verified_status in terminal_statuses:
+            continue
+        if status in terminal_statuses:
+            continue
+        local_refs = _local_reference_files(payload)
+        target_files = _target_remote_files(payload)
+        verification = deploy_payload_verification_snapshot(payload)
+        local_patch_readiness = deploy_payload_local_patch_readiness(payload)
+        application_plan = deploy_file_application_plan(local_refs, target_files, payload)
+        payloads.append(
+            {
+                "file": str(path.relative_to(ROOT)) if path.is_relative_to(ROOT) else str(path),
+                "generated_at": payload_timestamp(payload),
+                "objective_id": str(payload.get("objective_id") or "").strip(),
+                "purpose": sanitize_operator_text(payload.get("purpose") or payload.get("warning")),
+                "local_reference_files": local_refs,
+                "local_patch_readiness": local_patch_readiness,
+                "target_remote_files": target_files,
+                "application_plan": application_plan,
+                "post_deploy_commands": _string_list(payload.get("post_deploy_commands")),
+                "acceptance": _string_list(payload.get("acceptance")),
+                "verification_status": verification.get("verification_status"),
+                "verification_reason": verification.get("verification_reason"),
+                "verification_evidence": verification.get("verification_evidence"),
+            }
+        )
+    payloads.sort(key=lambda item: item.get("generated_at") or item.get("file") or "", reverse=True)
+    return {
+        "pending_count": len(payloads),
+        "latest": payloads[0] if payloads else {},
+        "pending_payloads": payloads,
+        "source": str(DEPLOY_PAYLOADS_ROOT),
+    }
+
+
+def deploy_application_result_snapshot() -> dict[str, Any]:
+    result = load_training_json("MIM_STALE_REMEDIATION_MATERIALIZATION_DEPLOY_RESULT.latest.json")
+    if not result:
+        return {
+            "status": "missing",
+            "source": "MIM_STALE_REMEDIATION_MATERIALIZATION_DEPLOY_RESULT.latest.json",
+        }
+    return {
+        "status": str(result.get("status") or "unknown").strip() or "unknown",
+        "objective_id": str(result.get("objective_id") or "").strip(),
+        "generated_at": str(result.get("generated_at") or "").strip(),
+        "no_new_channel_required": bool(result.get("no_new_channel_required")),
+        "live_request_emitted": bool(result.get("live_request_emitted")),
+        "live_deployment_verified": bool(result.get("live_deployment_verified")),
+        "applied_file_count": len(result.get("applied_files") if isinstance(result.get("applied_files"), list) else []),
+        "remote_validation": result.get("remote_validation") if isinstance(result.get("remote_validation"), list) else [],
+        "remaining_blockers": result.get("remaining_blockers") if isinstance(result.get("remaining_blockers"), list) else [],
+        "source": "MIM_STALE_REMEDIATION_MATERIALIZATION_DEPLOY_RESULT.latest.json",
+    }
 
 
 def active_stale_artifacts_with_disposition(
@@ -1133,6 +1639,8 @@ def build_scoreboard(base_url: str | None, operator_estimated_hours: float | Non
     tod_artifact_metrics = tod_artifact_metric_snapshot()
     tod_next_action_accuracy = tod_next_action_accuracy_snapshot()
     mim_structural_reasoning = mim_structural_reasoning_snapshot()
+    deploy_payloads = pending_deploy_payload_snapshot()
+    deploy_application_result = deploy_application_result_snapshot()
     no_op_rejections = tod_artifact_metrics["no_op_rejections"]
     validated_edits = tod_artifact_metrics["validated_edits"]
     meaningful_implementations = tod_artifact_metrics["meaningful_tod_implementations"]
@@ -1217,6 +1725,7 @@ def build_scoreboard(base_url: str | None, operator_estimated_hours: float | Non
         "stale_artifact_disposition_source": disposition_source,
         "stale_artifact_disposition_generated_at": disposition_generated_at,
         "retired_or_historical_stale_artifacts": applied_stale_dispositions,
+        "real_movement_scorecard": load_training_json("MIM_TOD_REAL_MOVEMENT_SCORECARD.latest.json"),
         "operator_summary": sanitize_operator_text(reflection.get("operator_summary")),
         "recommendations": [sanitize_operator_text(item) for item in reflection_recommendations],
     }
@@ -1452,9 +1961,20 @@ def build_scoreboard(base_url: str | None, operator_estimated_hours: float | Non
                     "unit": "count",
                     "source": "tod_next_action_training_set",
                 },
+                "pending_mim_deploy_payloads": {
+                    "yesterday": baseline_started(
+                        "Current unverified MIM deploy handoff count establishes the baseline",
+                        deploy_payloads.get("pending_count"),
+                    ),
+                    "today": deploy_payloads.get("pending_count"),
+                    "unit": "count",
+                    "source": "runtime_remote_training/deploy_payloads",
+                },
             },
             "artifact_metrics": tod_artifact_metrics,
             "next_action_accuracy": tod_next_action_accuracy,
+            "deploy_payloads": deploy_payloads,
+            "deploy_application_result": deploy_application_result,
             "blocker_classes": (((directive.get("tod_training") or {}).get("active_blocker_clearing_drill") or {}).get("classes") or triage.get("classes") or {}),
             "latest_drill": {
                 "id": drill4.get("drill_id"),
@@ -1485,6 +2005,7 @@ def build_scoreboard(base_url: str | None, operator_estimated_hours: float | Non
             str(training_source_path("MIM_OPERATOR_IMPACT_SCORECARD.latest.json")),
             str(training_source_path("MIM_OPERATOR_IMPACT_LIVE_10_SCORECARD.latest.json")),
             str(training_source_path("MIM_TOD_CONTINUOUS_TRAINING_DIRECTIVE.latest.json")),
+            str(DEPLOY_PAYLOADS_ROOT),
             str(BLOCKER_ROOT / "TOD_BLOCKED_OBJECTIVE_CLEARING_DRILL_002.latest.json"),
             str(BLOCKER_ROOT / "TOD_BLOCKER_RESOLUTION_DRILL_003.latest.json"),
             str(BLOCKER_ROOT / "TOD_BLOCKER_RESOLUTION_DRILL_004.latest.json"),
@@ -1625,7 +2146,8 @@ def write_markdown(scoreboard: dict[str, Any], path: Path) -> None:
         f"- Status: {operator_impact.get('status') or 'baseline_needed'}",
         f"- Score: {metric_value(operator_impact.get('operator_impact_score'))}/10",
         f"- Impact: {metric_value(operator_impact.get('operator_impact_percent'))}%",
-        f"- Replies scored: {metric_value(operator_impact.get('pass_count'))}/{metric_value(operator_impact.get('sample_count'))}",
+        f"- Replies scored: {metric_value(operator_impact.get('sample_count'))}",
+        f"- Fully passing replies: {metric_value(operator_impact.get('pass_count'))}/{metric_value(operator_impact.get('sample_count'))}",
         f"- Generated: {operator_impact.get('generated_at') or 'unknown'}",
         f"- Source: {operator_impact.get('source') or 'MIM_OPERATOR_IMPACT_SCORECARD.latest.json'}",
     ])
@@ -1641,6 +2163,94 @@ def write_markdown(scoreboard: dict[str, Any], path: Path) -> None:
         lines.append(
             f"| {key.replace('_', ' ').title()} | {metric_value(item.get('yesterday'))} | {metric_value(today)} | {item.get('source')} |"
         )
+    deploy_payloads = scoreboard["tod_score"].get("deploy_payloads")
+    if isinstance(deploy_payloads, dict):
+        latest_deploy = deploy_payloads.get("latest") if isinstance(deploy_payloads.get("latest"), dict) else {}
+        lines.extend([
+            "",
+            "## Pending MIM Deploy Payloads",
+            "",
+            f"- Pending: {metric_value(deploy_payloads.get('pending_count'))}",
+            f"- Latest objective: {latest_deploy.get('objective_id') or 'none'}",
+            f"- Latest file: {latest_deploy.get('file') or 'none'}",
+            f"- Purpose: {latest_deploy.get('purpose') or 'none'}",
+            f"- Latest verification: {latest_deploy.get('verification_status') or 'unknown'} - {latest_deploy.get('verification_reason') or 'no verification reason recorded'}",
+        ])
+        readiness = (
+            latest_deploy.get("local_patch_readiness")
+            if isinstance(latest_deploy.get("local_patch_readiness"), dict)
+            else {}
+        )
+        if readiness:
+            lines.append(
+                f"- Local patch readiness: {readiness.get('status') or 'unknown'} "
+                f"(ready={str(bool(readiness.get('ready'))).lower()})"
+            )
+            if readiness.get("missing"):
+                lines.extend(["", "Missing local reference files:", ""])
+                for missing_ref in _string_list(readiness.get("missing"))[:5]:
+                    lines.append(f"- `{missing_ref}`")
+        application_plan = (
+            latest_deploy.get("application_plan")
+            if isinstance(latest_deploy.get("application_plan"), dict)
+            else {}
+        )
+        if application_plan:
+            lines.append(
+                f"- Existing deploy path application: {application_plan.get('status') or 'unknown'} "
+                f"(ready={str(bool(application_plan.get('ready'))).lower()})"
+            )
+        deploy_result = scoreboard["tod_score"].get("deploy_application_result")
+        if isinstance(deploy_result, dict) and deploy_result.get("status") not in {"", None, "missing"}:
+            lines.extend(
+                [
+                    "",
+                    "Latest deploy application result:",
+                    "",
+                    f"- Objective: {deploy_result.get('objective_id') or 'unknown'}",
+                    f"- Status: {deploy_result.get('status') or 'unknown'}",
+                    f"- Applied files: {metric_value(deploy_result.get('applied_file_count'))}",
+                    f"- No new channel required: {str(bool(deploy_result.get('no_new_channel_required'))).lower()}",
+                    f"- Live request emitted: {str(bool(deploy_result.get('live_request_emitted'))).lower()}",
+                    f"- Live deployment verified: {str(bool(deploy_result.get('live_deployment_verified'))).lower()}",
+                ]
+            )
+            remaining = deploy_result.get("remaining_blockers") if isinstance(deploy_result.get("remaining_blockers"), list) else []
+            if remaining:
+                lines.extend(["", "Remaining deployment blockers:", ""])
+                for blocker in remaining[:5]:
+                    lines.append(f"- {sanitize_operator_text(blocker)}")
+        local_refs = latest_deploy.get("local_reference_files") if isinstance(latest_deploy.get("local_reference_files"), list) else []
+        if local_refs:
+            lines.extend(["", "Latest local reference files:", ""])
+            for ref in local_refs[:5]:
+                lines.append(f"- `{ref}`")
+        targets = latest_deploy.get("target_remote_files") if isinstance(latest_deploy.get("target_remote_files"), list) else []
+        if targets:
+            lines.extend(["", "Latest remote targets:", ""])
+            for target in targets[:5]:
+                lines.append(f"- `{target}`")
+        acceptance = latest_deploy.get("acceptance") if isinstance(latest_deploy.get("acceptance"), list) else []
+        if acceptance:
+            lines.extend(["", "Latest acceptance gates:", ""])
+            for item in acceptance[:5]:
+                lines.append(f"- {item}")
+        post_deploy_commands = latest_deploy.get("post_deploy_commands") if isinstance(latest_deploy.get("post_deploy_commands"), list) else []
+        if post_deploy_commands:
+            lines.extend(["", "Latest post-deploy proof steps:", ""])
+            for command in post_deploy_commands[:5]:
+                lines.append(f"- `{command}`")
+        pending_items = deploy_payloads.get("pending_payloads") if isinstance(deploy_payloads.get("pending_payloads"), list) else []
+        if pending_items:
+            lines.extend(["", "Pending verification reasons:", ""])
+            for item in pending_items[:5]:
+                if not isinstance(item, dict):
+                    continue
+                lines.append(
+                    f"- {item.get('objective_id') or 'unknown'}: "
+                    f"{item.get('verification_status') or 'unknown'} - "
+                    f"{item.get('verification_reason') or 'no reason recorded'}"
+                )
     next_action_accuracy = scoreboard["tod_score"].get("next_action_accuracy")
     if isinstance(next_action_accuracy, dict):
         lines.extend([
@@ -1676,6 +2286,435 @@ def write_markdown(scoreboard: dict[str, Any], path: Path) -> None:
         "- Internal jargon is a lower-is-better percentage from live MIM evaluation prompts.",
     ])
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def build_deploy_verification_queue(scoreboard: dict[str, Any]) -> dict[str, Any]:
+    deploy_payloads = (
+        scoreboard.get("tod_score", {}).get("deploy_payloads", {})
+        if isinstance(scoreboard.get("tod_score"), dict)
+        else {}
+    )
+    pending_items = (
+        deploy_payloads.get("pending_payloads")
+        if isinstance(deploy_payloads.get("pending_payloads"), list)
+        else []
+    )
+    queue_items: list[dict[str, Any]] = []
+    for index, item in enumerate(pending_items, start=1):
+        if not isinstance(item, dict):
+            continue
+        objective_id = str(item.get("objective_id") or "unknown").strip() or "unknown"
+        post_deploy_commands = _string_list(item.get("post_deploy_commands"))
+        acceptance = _string_list(item.get("acceptance"))
+        if objective_id.upper() == "MIM-CONVERSATION-MODE-SELECTION-V2":
+            owner = "MIM deploy/runtime owner first; operator-impact and durability scorers validate live behavior after deployment."
+        else:
+            owner = "MIM deploy/runtime owner first; TOD validates execution evidence after the live request is implementation-shaped."
+        queue_items.append(
+            {
+                "rank": index,
+                "objective_id": objective_id,
+                "status": str(item.get("verification_status") or "unknown").strip() or "unknown",
+                "reason": str(item.get("verification_reason") or "no verification reason recorded").strip(),
+                "deploy_payload": str(item.get("file") or "").strip(),
+                "owner": owner,
+                "dave_needed": "no unless credentials, production account access, or external service authority is required.",
+                "acceptance": acceptance,
+                "proof_steps": post_deploy_commands,
+                "next_proof": post_deploy_commands[0] if post_deploy_commands else "register a deploy-specific verifier or live proof command",
+                "local_patch_readiness": item.get("local_patch_readiness") if isinstance(item.get("local_patch_readiness"), dict) else {},
+                "application_plan": item.get("application_plan") if isinstance(item.get("application_plan"), dict) else {},
+                "no_credit_if": [
+                    "new SSH or transport channel is proposed",
+                    "diagnostic-only task request remains current",
+                    "wrapper-only success is treated as implementation",
+                    "TOD credit is awarded before inspected changed-file evidence",
+                ],
+            }
+        )
+    return {
+        "artifact_type": "mim_tod_deploy_verification_queue_v1",
+        "generated_at": utc_now(),
+        "status": "needs_verification" if queue_items else "empty",
+        "pending_count": len(queue_items),
+        "source": "MIM_TOD_TRAINING_SCOREBOARD.latest.json:tod_score.deploy_payloads.pending_payloads",
+        "bridge_state": bridge_materialization_state_snapshot(),
+        "items": queue_items,
+    }
+
+
+def write_deploy_verification_queue(queue: dict[str, Any], out_dir: Path) -> dict[str, str]:
+    json_path = out_dir / "MIM_TOD_DEPLOY_VERIFICATION_QUEUE.latest.json"
+    md_path = out_dir / "MIM_TOD_DEPLOY_VERIFICATION_QUEUE.latest.md"
+    json_path.write_text(json.dumps(queue, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    lines = [
+        "# MIM/TOD Deploy Verification Queue",
+        "",
+        f"Generated: {queue.get('generated_at', '')}",
+        f"Status: {queue.get('status', '')}",
+        f"Pending: {queue.get('pending_count', 0)}",
+        "",
+    ]
+    bridge_state = queue.get("bridge_state") if isinstance(queue.get("bridge_state"), dict) else {}
+    if bridge_state:
+        current_request = (
+            bridge_state.get("current_request")
+            if isinstance(bridge_state.get("current_request"), dict)
+            else {}
+        )
+        lines.extend(
+            [
+                "## Existing Bridge State",
+                "",
+                f"- Status: {bridge_state.get('status', '')}",
+                f"- Transport: {bridge_state.get('transport', '')}",
+                f"- Transport active: {str(bool(bridge_state.get('transport_active'))).lower()}",
+                f"- No new channel required: {str(bool(bridge_state.get('no_new_channel_required'))).lower()}",
+                f"- Blocker: {bridge_state.get('blocker', '') or 'none'}",
+                f"- Current request: task_class={current_request.get('task_class', '')}; validation_only={str(bool(current_request.get('validation_only'))).lower()}; changed_files_required_for_success={str(bool(current_request.get('changed_files_required_for_success'))).lower()}",
+                f"- Current target: target_file={current_request.get('target_file', '') or 'missing'}; one_target_file={str(bool(current_request.get('one_target_file'))).lower()}; target_files_type={current_request.get('target_files_type', '')}",
+                f"- Required next action: {bridge_state.get('required_next_action', '')}",
+                "",
+            ]
+        )
+        request_copies = bridge_state.get("request_copies") if isinstance(bridge_state.get("request_copies"), list) else []
+        if request_copies:
+            lines.extend(["### Request Copies", ""])
+            for copy in request_copies:
+                if not isinstance(copy, dict):
+                    continue
+                reasons = ", ".join(str(item) for item in copy.get("malformed_reasons", []) if str(item).strip())
+                lines.append(
+                    "- {source}: implementation_shaped={implementation}; task_class={task_class}; target_file={target_file}; one_target_file={one_target}; malformed={malformed}".format(
+                        source=copy.get("source", ""),
+                        implementation=str(bool(copy.get("implementation_shaped"))).lower(),
+                        task_class=copy.get("task_class", ""),
+                        target_file=copy.get("target_file", "") or "missing",
+                        one_target=str(bool(copy.get("one_target_file"))).lower(),
+                        malformed=reasons or "none",
+                    )
+                )
+            lines.append("")
+    items = queue.get("items") if isinstance(queue.get("items"), list) else []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        lines.extend(
+            [
+                f"## {item.get('rank')}. {item.get('objective_id')}",
+                "",
+                f"- Status: {item.get('status')}",
+                f"- Reason: {item.get('reason')}",
+                f"- Deploy payload: {item.get('deploy_payload')}",
+                f"- Owner: {item.get('owner')}",
+                f"- Dave needed: {item.get('dave_needed')}",
+                f"- Next proof: {item.get('next_proof')}",
+                "",
+            ]
+        )
+        readiness = item.get("local_patch_readiness") if isinstance(item.get("local_patch_readiness"), dict) else {}
+        if readiness:
+            lines.extend(
+                [
+                    f"- Local patch readiness: {readiness.get('status') or 'unknown'} (ready={str(bool(readiness.get('ready'))).lower()})",
+                    "",
+                ]
+            )
+        application_plan = item.get("application_plan") if isinstance(item.get("application_plan"), dict) else {}
+        if application_plan:
+            lines.extend(
+                [
+                    f"- Existing deploy path application: {application_plan.get('status') or 'unknown'} (ready={str(bool(application_plan.get('ready'))).lower()})",
+                    "",
+                ]
+            )
+        acceptance = item.get("acceptance") if isinstance(item.get("acceptance"), list) else []
+        if acceptance:
+            lines.extend(["Acceptance:", ""])
+            lines.extend(f"- {entry}" for entry in acceptance[:6])
+            lines.append("")
+        proof_steps = item.get("proof_steps") if isinstance(item.get("proof_steps"), list) else []
+        if proof_steps:
+            lines.extend(["Proof Steps:", ""])
+            lines.extend(f"- `{entry}`" for entry in proof_steps[:8])
+            lines.append("")
+    md_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    return {"json": str(json_path), "md": str(md_path)}
+
+
+def build_deploy_application_manifest(queue: dict[str, Any]) -> dict[str, Any]:
+    items = queue.get("items") if isinstance(queue.get("items"), list) else []
+    manifest_items: list[dict[str, Any]] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        application_plan = item.get("application_plan") if isinstance(item.get("application_plan"), dict) else {}
+        manifest_items.append(
+            {
+                "rank": item.get("rank"),
+                "objective_id": item.get("objective_id"),
+                "deploy_payload": item.get("deploy_payload"),
+                "verification_status": item.get("status"),
+                "verification_reason": item.get("reason"),
+                "application_status": application_plan.get("status") or "unknown",
+                "ready": bool(application_plan.get("ready")),
+                "file_pairs": application_plan.get("pairs") if isinstance(application_plan.get("pairs"), list) else [],
+                "apply_commands": application_plan.get("apply_commands") if isinstance(application_plan.get("apply_commands"), list) else [],
+                "post_deploy_proof_steps": item.get("proof_steps") if isinstance(item.get("proof_steps"), list) else [],
+            }
+        )
+    ready_count = len([item for item in manifest_items if item.get("ready")])
+    partial_count = len(
+        [
+            item
+            for item in manifest_items
+            if str(item.get("application_status") or "").strip() == "partial_patch_hunk_required"
+        ]
+    )
+    if not manifest_items:
+        status = "empty"
+    elif ready_count == len(manifest_items):
+        status = "ready_to_apply_existing_path"
+    elif ready_count and partial_count:
+        status = "ready_with_partial_hunks_required"
+    elif ready_count:
+        status = "partially_ready_to_apply_existing_path"
+    elif partial_count:
+        status = "partial_hunks_required"
+    else:
+        status = "no_ready_payloads"
+    return {
+        "artifact_type": "mim_tod_deploy_application_manifest_v1",
+        "generated_at": utc_now(),
+        "status": status,
+        "ready_count": ready_count,
+        "partial_hunk_count": partial_count,
+        "pending_count": len(manifest_items),
+        "no_new_channel_required": True,
+        "existing_apply_script": "scripts\\Send-TODMimScript.ps1",
+        "bridge_state": queue.get("bridge_state") if isinstance(queue.get("bridge_state"), dict) else {},
+        "items": manifest_items,
+        "credit_policy": "Applying these Codex-authored materializer repairs does not award TOD independent-resolution credit; credit starts only after TOD independently inspects, changes behavior, validates, and closes a fresh implementation request.",
+    }
+
+
+def write_deploy_application_manifest(manifest: dict[str, Any], out_dir: Path) -> dict[str, str]:
+    json_path = out_dir / "MIM_TOD_DEPLOY_APPLICATION_MANIFEST.latest.json"
+    md_path = out_dir / "MIM_TOD_DEPLOY_APPLICATION_MANIFEST.latest.md"
+    json_path.write_text(json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    lines = [
+        "# MIM/TOD Deploy Application Manifest",
+        "",
+        f"Generated: {manifest.get('generated_at', '')}",
+        f"Status: {manifest.get('status', '')}",
+        f"Ready payloads: {manifest.get('ready_count', 0)}/{manifest.get('pending_count', 0)}",
+        f"Partial hunk payloads: {manifest.get('partial_hunk_count', 0)}",
+        f"No new channel required: {str(bool(manifest.get('no_new_channel_required'))).lower()}",
+        f"Existing apply script: {manifest.get('existing_apply_script', '')}",
+        "",
+        f"Credit policy: {manifest.get('credit_policy', '')}",
+        "",
+    ]
+    items = manifest.get("items") if isinstance(manifest.get("items"), list) else []
+    for item in items:
+        lines.extend(
+            [
+                f"## {item.get('rank')}. {item.get('objective_id')}",
+                "",
+                f"- Application status: {item.get('application_status')} (ready={str(bool(item.get('ready'))).lower()})",
+                f"- Live verification: {item.get('verification_status')} - {item.get('verification_reason')}",
+                f"- Deploy payload: {item.get('deploy_payload')}",
+                "",
+            ]
+        )
+        commands = item.get("apply_commands") if isinstance(item.get("apply_commands"), list) else []
+        if commands:
+            lines.extend(["Apply through existing path:", ""])
+            lines.extend(f"- `{command}`" for command in commands)
+            lines.append("")
+        proof_steps = item.get("post_deploy_proof_steps") if isinstance(item.get("post_deploy_proof_steps"), list) else []
+        if proof_steps:
+            lines.extend(["Post-deploy proof:", ""])
+            lines.extend(f"- `{step}`" for step in proof_steps[:8])
+            lines.append("")
+    md_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    return {"json": str(json_path), "md": str(md_path)}
+
+
+def build_deploy_application_preflight(manifest: dict[str, Any]) -> dict[str, Any]:
+    items = manifest.get("items") if isinstance(manifest.get("items"), list) else []
+    item_results: list[dict[str, Any]] = []
+    failed_checks: list[str] = []
+    total_pairs = 0
+    verified_pairs = 0
+    full_apply_pairs = 0
+    verified_full_apply_pairs = 0
+    hunk_required_count = 0
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        application_status = str(item.get("application_status") or "").strip()
+        hunk_required = application_status == "partial_patch_hunk_required"
+        if hunk_required:
+            hunk_required_count += 1
+        pair_results: list[dict[str, Any]] = []
+        file_pairs = item.get("file_pairs") if isinstance(item.get("file_pairs"), list) else []
+        for pair in file_pairs:
+            if not isinstance(pair, dict):
+                continue
+            total_pairs += 1
+            local_path_text = str(pair.get("local_path") or "").strip()
+            remote_path_text = str(pair.get("remote_path") or "").strip()
+            command_text = str(pair.get("apply_command") or "").strip()
+            expected_sha = str(pair.get("sha256") or "").strip().lower()
+            local_path = Path(local_path_text)
+            if local_path_text and not local_path.is_absolute():
+                local_path = ROOT / local_path
+            exists = local_path.exists() and local_path.is_file()
+            actual_sha = ""
+            size_bytes = None
+            if exists:
+                data = local_path.read_bytes()
+                actual_sha = hashlib.sha256(data).hexdigest()
+                size_bytes = len(data)
+            sha_matches = bool(expected_sha) and actual_sha == expected_sha
+            command_uses_existing_script = "scripts\\Send-TODMimScript.ps1" in command_text
+            command_mentions_pair = local_path_text in command_text and remote_path_text in command_text
+            remote_target_valid = remote_path_text.startswith("/home/testpilot/mim/")
+            local_pair_valid = exists and sha_matches and remote_target_valid
+            if not hunk_required:
+                full_apply_pairs += 1
+            passed = local_pair_valid and (
+                hunk_required
+                or (
+                    command_uses_existing_script
+                    and command_mentions_pair
+                )
+            )
+            full_apply_passed = (
+                exists
+                and sha_matches
+                and command_uses_existing_script
+                and command_mentions_pair
+                and remote_target_valid
+            )
+            if passed:
+                verified_pairs += 1
+            if full_apply_passed and not hunk_required:
+                verified_full_apply_pairs += 1
+            if not passed and not hunk_required:
+                failed_checks.append(f"{item.get('objective_id') or 'unknown'}:{local_path_text or 'missing-local'}")
+            pair_results.append(
+                {
+                    "local_path": local_path_text,
+                    "remote_path": remote_path_text,
+                    "application_status": application_status,
+                    "local_exists": exists,
+                    "expected_sha256": expected_sha,
+                    "actual_sha256": actual_sha,
+                    "sha256_matches": sha_matches,
+                    "size_bytes": size_bytes,
+                    "command_uses_existing_script": command_uses_existing_script,
+                    "command_mentions_pair": command_mentions_pair,
+                    "remote_target_valid": remote_target_valid,
+                    "hunk_required": hunk_required,
+                    "passed": passed,
+                }
+            )
+        item_passed = bool(file_pairs) and all(result.get("passed") for result in pair_results)
+        item_results.append(
+            {
+                "rank": item.get("rank"),
+                "objective_id": item.get("objective_id"),
+                "application_status": application_status,
+                "passed": item_passed,
+                "ready_for_full_file_apply": item_passed and not hunk_required,
+                "hunk_required": hunk_required,
+                "pair_count": len(pair_results),
+                "pairs": pair_results,
+            }
+        )
+    no_new_channel = bool(manifest.get("no_new_channel_required"))
+    if not no_new_channel:
+        failed_checks.append("manifest:no_new_channel_required_false")
+    if failed_checks or not no_new_channel:
+        status = "failed"
+    elif hunk_required_count:
+        status = "ready_with_partial_hunks_required"
+    elif total_pairs and verified_pairs == total_pairs:
+        status = "passed_ready_for_existing_apply"
+    else:
+        status = "failed"
+    return {
+        "artifact_type": "mim_tod_deploy_application_preflight_v1",
+        "generated_at": utc_now(),
+        "status": status,
+        "passed": status in {"passed_ready_for_existing_apply", "ready_with_partial_hunks_required"},
+        "verified_pairs": verified_pairs,
+        "total_pairs": total_pairs,
+        "full_apply_pairs": full_apply_pairs,
+        "verified_full_apply_pairs": verified_full_apply_pairs,
+        "hunk_required_count": hunk_required_count,
+        "failed_checks": failed_checks,
+        "no_new_channel_required": no_new_channel,
+        "live_deployment_verified": False,
+        "existing_apply_script": manifest.get("existing_apply_script") or "scripts\\Send-TODMimScript.ps1",
+        "items": item_results,
+        "next_action": (
+            "Apply ready payloads through the existing Send-TODMimScript.ps1 path, then run post-deploy proof and refresh scorecards."
+            if status == "passed_ready_for_existing_apply"
+            else "Apply full-file-ready payloads through the existing path; materialize partial hunk payloads against the live file before applying them."
+            if status == "ready_with_partial_hunks_required"
+            else "Repair failed local preflight checks before applying deploy payloads."
+        ),
+        "credit_policy": manifest.get("credit_policy") or "",
+    }
+
+
+def write_deploy_application_preflight(preflight: dict[str, Any], out_dir: Path) -> dict[str, str]:
+    json_path = out_dir / "MIM_TOD_DEPLOY_APPLICATION_PREFLIGHT.latest.json"
+    md_path = out_dir / "MIM_TOD_DEPLOY_APPLICATION_PREFLIGHT.latest.md"
+    json_path.write_text(json.dumps(preflight, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    lines = [
+        "# MIM/TOD Deploy Application Preflight",
+        "",
+        f"Generated: {preflight.get('generated_at', '')}",
+        f"Status: {preflight.get('status', '')}",
+        f"Passed: {str(bool(preflight.get('passed'))).lower()}",
+        f"Verified file pairs: {preflight.get('verified_pairs', 0)}/{preflight.get('total_pairs', 0)}",
+        f"Full-file apply pairs: {preflight.get('verified_full_apply_pairs', 0)}/{preflight.get('full_apply_pairs', 0)}",
+        f"Partial hunk payloads: {preflight.get('hunk_required_count', 0)}",
+        f"No new channel required: {str(bool(preflight.get('no_new_channel_required'))).lower()}",
+        f"Live deployment verified: {str(bool(preflight.get('live_deployment_verified'))).lower()}",
+        f"Next action: {preflight.get('next_action', '')}",
+        "",
+        f"Credit policy: {preflight.get('credit_policy', '')}",
+        "",
+    ]
+    items = preflight.get("items") if isinstance(preflight.get("items"), list) else []
+    for item in items:
+        lines.extend(
+            [
+                f"## {item.get('rank')}. {item.get('objective_id')}",
+                "",
+                f"- Passed: {str(bool(item.get('passed'))).lower()}",
+                f"- Application status: {item.get('application_status') or 'unknown'}",
+                f"- Ready for full-file apply: {str(bool(item.get('ready_for_full_file_apply'))).lower()}",
+                f"- File pairs: {item.get('pair_count', 0)}",
+                "",
+            ]
+        )
+        pairs = item.get("pairs") if isinstance(item.get("pairs"), list) else []
+        for pair in pairs:
+            lines.append(
+                f"- `{pair.get('local_path')}` -> `{pair.get('remote_path')}`: "
+                f"exists={str(bool(pair.get('local_exists'))).lower()}, "
+                f"sha={str(bool(pair.get('sha256_matches'))).lower()}, "
+                f"script={str(bool(pair.get('command_uses_existing_script'))).lower()}"
+            )
+        lines.append("")
+    md_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
+    return {"json": str(json_path), "md": str(md_path)}
 
 
 def write_snapshots(scoreboard: dict[str, Any], out_dir: Path) -> dict[str, str]:
@@ -1720,6 +2759,35 @@ def main() -> int:
     out_dir.mkdir(parents=True, exist_ok=True)
     json_path = out_dir / "MIM_TOD_TRAINING_SCOREBOARD.latest.json"
     md_path = out_dir / "MIM_TOD_TRAINING_SCOREBOARD.latest.md"
+    json_path.write_text(json.dumps(scoreboard, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_markdown(scoreboard, md_path)
+    deploy_queue = build_deploy_verification_queue(scoreboard)
+    deploy_queue_paths = write_deploy_verification_queue(deploy_queue, out_dir)
+    deploy_manifest = build_deploy_application_manifest(deploy_queue)
+    deploy_manifest_paths = write_deploy_application_manifest(deploy_manifest, out_dir)
+    deploy_preflight = build_deploy_application_preflight(deploy_manifest)
+    deploy_preflight_paths = write_deploy_application_preflight(deploy_preflight, out_dir)
+    scoreboard["tod_score"]["deploy_verification_queue"] = {
+        "status": deploy_queue.get("status"),
+        "pending_count": deploy_queue.get("pending_count"),
+        "json": deploy_queue_paths["json"],
+        "md": deploy_queue_paths["md"],
+    }
+    scoreboard["tod_score"]["deploy_application_manifest"] = {
+        "status": deploy_manifest.get("status"),
+        "ready_count": deploy_manifest.get("ready_count"),
+        "pending_count": deploy_manifest.get("pending_count"),
+        "json": deploy_manifest_paths["json"],
+        "md": deploy_manifest_paths["md"],
+    }
+    scoreboard["tod_score"]["deploy_application_preflight"] = {
+        "status": deploy_preflight.get("status"),
+        "passed": deploy_preflight.get("passed"),
+        "verified_pairs": deploy_preflight.get("verified_pairs"),
+        "total_pairs": deploy_preflight.get("total_pairs"),
+        "json": deploy_preflight_paths["json"],
+        "md": deploy_preflight_paths["md"],
+    }
     json_path.write_text(json.dumps(scoreboard, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     write_markdown(scoreboard, md_path)
     if args.write_snapshots:
