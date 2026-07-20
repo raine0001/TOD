@@ -71,7 +71,7 @@ STUDIO_CHAT_THREADS_PATH = SHARED_RUNTIME_ROOT / "MIM_STUDIO_CHAT_THREADS.latest
 
 
 def _studio_chat_operator_identity() -> str:
-    return str(settings.mimtod_user or "dave").strip().lower() or "dave"
+    return str(getattr(settings, "mimtod_user", "") or "dave").strip().lower() or "dave"
 
 
 def _studio_chat_thread_key(thread_id: str) -> str:
@@ -1028,6 +1028,107 @@ def _load_text(name: str, limit: int = 1200) -> str:
     return ""
 
 
+def _extract_objective_id_from_text(text: object) -> str:
+    value = str(text or "")
+    if not value:
+        return ""
+    preferred = re.findall(
+        r"\b(?:MIM|TOD|AGENTMIM|STUDIO|MIMTOD|APP|ENT)[A-Z0-9]*(?:-[A-Z0-9]+){2,}\b",
+        value,
+    )
+    if preferred:
+        return preferred[-1]
+    generic = re.findall(r"\b[A-Z][A-Z0-9]+(?:-[A-Z0-9]+){3,}\b", value)
+    return generic[-1] if generic else ""
+
+
+def _studio_mim_conversation_focus_state() -> dict[str, Any]:
+    threads_payload = _load_studio_chat_threads()
+    threads = threads_payload.get("threads") if isinstance(threads_payload.get("threads"), dict) else {}
+    key = _studio_chat_thread_key("dave-primary-mim-thread")
+    thread = threads.get(key) if isinstance(threads.get(key), dict) else {}
+    if not thread and threads:
+        candidates = [item for item in threads.values() if isinstance(item, dict)]
+        candidates.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
+        thread = candidates[0] if candidates else {}
+    messages = thread.get("messages") if isinstance(thread.get("messages"), list) else []
+    clean_messages = [item for item in messages if isinstance(item, dict)]
+    latest_user = next(
+        (item for item in reversed(clean_messages) if str(item.get("role") or "").lower() == "user"),
+        {},
+    )
+    latest_mim = next(
+        (item for item in reversed(clean_messages) if str(item.get("role") or "").lower() == "mim"),
+        {},
+    )
+    search_text = "\n".join(str(item.get("text") or "") for item in clean_messages[-10:])
+    objective_id = _extract_objective_id_from_text(search_text)
+    if not objective_id:
+        return {}
+    latest_text = _first_text(latest_user.get("text"), latest_mim.get("text"), default="")
+    summary = _first_text(
+        latest_mim.get("text"),
+        latest_user.get("text"),
+        default=f"MIM is tracking {objective_id}.",
+    )
+    if len(summary) > 280:
+        summary = summary[:277].rstrip() + "..."
+    return {
+        "status": "working",
+        "execution_state": "working",
+        "label": "MIM focus",
+        "objective_id": objective_id,
+        "task_id": "",
+        "updated_at": _first_text(thread.get("updated_at"), latest_mim.get("at"), latest_user.get("at"), default=""),
+        "summary": summary,
+        "current_action": f"MIM is tracking the operator conversation around {objective_id}.",
+        "plain_meaning": (
+            f"Objective: {objective_id} | Now: MIM should report live status, blocker, TOD dependency, "
+            "and next evidence for the objective instead of falling back to generic training status."
+        ),
+        "source": "studio_mim_chat_thread",
+        "latest_operator_prompt": latest_text,
+    }
+
+
+def _studio_mim_request_focus_state() -> dict[str, Any]:
+    request = _load_json("MIM_TOD_TASK_REQUEST.latest.json")
+    if not request:
+        return {}
+    objective_id = _first_text(request.get("objective_id"), default="")
+    task_id = _first_text(request.get("task_id"), request.get("request_id"), default="")
+    summary = _first_text(
+        request.get("summary"),
+        request.get("scope"),
+        request.get("requested_outcome"),
+        default="MIM has dispatched a TOD request.",
+    )
+    if len(summary) > 280:
+        summary = summary[:277].rstrip() + "..."
+    materialization = request.get("metadata_json", {}).get("materialization") if isinstance(request.get("metadata_json"), dict) else {}
+    status = _first_text(
+        materialization.get("status") if isinstance(materialization, dict) else "",
+        request.get("status"),
+        default="dispatched",
+    )
+    return {
+        "status": status,
+        "execution_state": status,
+        "label": "MIM request",
+        "objective_id": objective_id,
+        "task_id": task_id,
+        "updated_at": _first_text(request.get("generated_at"), request.get("updated_at"), default=""),
+        "summary": summary,
+        "current_action": _first_text(request.get("tod_action"), default="MIM dispatched work toward TOD."),
+        "plain_meaning": (
+            f"Objective: {objective_id} | Task: {task_id} | Now: {summary}"
+            if objective_id or task_id
+            else summary
+        ),
+        "source": "MIM_TOD_TASK_REQUEST.latest.json",
+    }
+
+
 def _studio_data_audit_state() -> dict[str, Any]:
     result = _load_json("MIM_STUDIO_DATA_AUDIT_AND_RECONCILIATION_RESULT.latest.json")
     objective = _load_json("MIM_STUDIO_DATA_AUDIT_AND_RECONCILIATION_V1.latest.json")
@@ -1145,7 +1246,12 @@ def _studio_mim_live_feed_state() -> dict[str, Any]:
     active_lane = _load_json("TOD_ACTIVE_EXECUTION_LANE.latest.json")
     execution_result = _load_json("TOD_EXECUTION_RESULT.latest.json")
     operator_status = _load_json("MIM_OPERATOR_STATUS.latest.json")
+    conversation_focus = _studio_mim_conversation_focus_state()
+    request_focus = _studio_mim_request_focus_state()
+    hourly_reflection = _load_json("MIM_TOD_HOURLY_REFLECTION.latest.json")
+    primary = conversation_focus or request_focus or {}
     event = _first_text(
+        primary.get("source"),
         execution_result.get("reason_code"),
         active_lane.get("terminal_event_type"),
         activity.get("event"),
@@ -1154,6 +1260,8 @@ def _studio_mim_live_feed_state() -> dict[str, Any]:
         default="ready",
     )
     summary = _first_text(
+        primary.get("current_action"),
+        primary.get("summary"),
         execution_result.get("current_action"),
         execution_result.get("summary"),
         active_lane.get("terminal_message"),
@@ -1162,9 +1270,12 @@ def _studio_mim_live_feed_state() -> dict[str, Any]:
         activity.get("next_step"),
         operator_status.get("current_focus"),
         operator_status.get("next_safe_action"),
+        hourly_reflection.get("operator_summary"),
         default="No active MIM/TOD activity is currently visible.",
     )
     raw_status = _first_text(
+        primary.get("execution_state"),
+        primary.get("status"),
         execution_result.get("execution_state"),
         execution_result.get("status"),
         active_lane.get("status"),
@@ -1193,16 +1304,25 @@ def _studio_mim_live_feed_state() -> dict[str, Any]:
         state = "idle"
         label = "Ready"
         plain_meaning = "No active work is currently visible in the live feed."
+    if primary:
+        label = _first_text(primary.get("label"), default=label)
+        if state == "idle":
+            state = "working"
+            label = _first_text(primary.get("label"), default="MIM focus")
+            plain_meaning = _first_text(primary.get("plain_meaning"), default=plain_meaning)
     timestamp = _first_text(
+        primary.get("updated_at"),
         execution_result.get("generated_at"),
         active_lane.get("terminal_at"),
         active_lane.get("generated_at"),
         activity.get("updated_at"),
         activity.get("generated_at"),
         operator_status.get("updated_at"),
+        hourly_reflection.get("generated_at"),
         default="",
     )
     objective_id = _first_text(
+        primary.get("objective_id"),
         execution_result.get("objective_id"),
         active_lane.get("objective_id"),
         activity.get("objective_id"),
@@ -1210,6 +1330,7 @@ def _studio_mim_live_feed_state() -> dict[str, Any]:
         default="",
     )
     task_id = _first_text(
+        primary.get("task_id"),
         execution_result.get("task_id"),
         active_lane.get("task_id"),
         activity.get("task_id"),
@@ -1222,7 +1343,7 @@ def _studio_mim_live_feed_state() -> dict[str, Any]:
         if task_id:
             parts.append(f"Task: {task_id}")
         parts.append(f"Now: {summary}")
-        plain_meaning = " | ".join(parts)
+        plain_meaning = _first_text(primary.get("plain_meaning"), default=" | ".join(parts))
 
     def activity_entry(label: str, payload: dict[str, Any], text: str, *, state_value: str = "") -> dict[str, str] | None:
         if not isinstance(payload, dict) or not text:
@@ -1251,10 +1372,13 @@ def _studio_mim_live_feed_state() -> dict[str, Any]:
     recent_events = [
         item
         for item in [
+            activity_entry("MIM conversation focus", conversation_focus, _first_text(conversation_focus.get("summary"), conversation_focus.get("current_action"), default="")),
+            activity_entry("MIM to TOD request", request_focus, _first_text(request_focus.get("summary"), request_focus.get("current_action"), default="")),
             activity_entry("Execution result", execution_result, _first_text(execution_result.get("summary"), execution_result.get("current_action"), default="")),
             activity_entry("Active lane", active_lane, _first_text(active_lane.get("terminal_message"), active_lane.get("status"), default="")),
             activity_entry("Activity stream", activity, _first_text(activity.get("current_action"), activity.get("summary"), activity.get("next_step"), default="")),
             activity_entry("MIM status", operator_status, _first_text(operator_status.get("what_mim_is_doing"), operator_status.get("current_focus"), default="")),
+            activity_entry("MIM/TOD reflection", hourly_reflection, _first_text(hourly_reflection.get("operator_summary"), hourly_reflection.get("assessment"), default="")),
         ]
         if item
     ]
