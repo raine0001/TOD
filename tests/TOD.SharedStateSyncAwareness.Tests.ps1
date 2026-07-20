@@ -47,6 +47,7 @@ Describe "TOD Shared State Sync Awareness" {
         Import-SyncFunction -Name 'Get-LocalPath'
         Import-SyncFunction -Name 'Get-JsonFileIfExists'
         Import-SyncFunction -Name 'Normalize-ObjectiveIdText'
+        Import-SyncFunction -Name 'Convert-ToUtcDateOrNull'
         Import-SyncFunction -Name 'Get-BridgeCanonicalEvidence'
     }
 
@@ -312,7 +313,7 @@ Describe "TOD Shared State Sync Awareness" {
         [bool]$evidence.live_bridge_publish_satisfied | Should Be $false
         [string]$evidence.canonical_task_id | Should Be 'objective-2913-task-7144'
         [string]$evidence.live_task_task_id | Should Be 'objective-2913-task-1777951503'
-        @($evidence.failure_signals) | Should Contain 'live_task_request_task_mismatch'
+        (@($evidence.failure_signals) -contains 'live_task_request_task_mismatch') | Should Be $true
     }
 
     It "handshake packet truth is persisted and preferred for objective alignment" {
@@ -636,8 +637,8 @@ Describe "TOD Shared State Sync Awareness" {
         [string]$integration.listener_decision.decision_outcome | Should Be 'ignored_stale_listener_decision'
         [string]$integration.listener_decision.execution_state | Should Be 'ignored'
         [string]$integration.listener_decision.suppressed_reason | Should Be 'inactive_authority_reset'
-        @($nextActions.blockers) | Should Not Contain 'listener rejected request (authority_reset_ceiling_exceeded)'
-        @($nextActions.recommended_recovery_actions) | Should Not Contain 'Listener recommendation: refresh_authoritative_objective_then_reissue'
+        (@($nextActions.blockers) -contains 'listener rejected request (authority_reset_ceiling_exceeded)') | Should Be $false
+        (@($nextActions.recommended_recovery_actions) -contains 'Listener recommendation: refresh_authoritative_objective_then_reissue') | Should Be $false
     }
 
     It "surfaces non-execute listener decisions as blockers and recovery guidance" {
