@@ -374,6 +374,45 @@ No source code modifications.
         }
     }
 
+    It 'preserves read-only task type from execute-chat-task without requiring bounded edit fields' {
+        $fixture = New-IntakeStateFixture
+        try {
+            foreach ($relativePath in @($intakeArtifactRelativePaths)) {
+                $pathValue = Join-Path $repoRoot $relativePath
+                if (Test-Path -Path $pathValue -PathType Leaf) {
+                    Remove-Item -Path $pathValue -Force
+                }
+            }
+
+            $readOnlyScope = @"
+Read-only training task: inspect runtime_remote_training/cleanup_holds/20260721_remaining_dirty_mim_tod_route_experiments.patch.
+Classify each experiment family.
+No source-code changes.
+Publish an assessment artifact.
+"@
+            $readOnly = (& $todScript -Action execute-chat-task -ConfigPath $fixture.ConfigPath -StatePath $fixture.StatePath -ObjectiveId 'TOD-ROUTE-EXPERIMENT-AUTHORITY-CLASSIFICATION-V1' -TaskId 'TSK-ROUTE-EXPERIMENT-CLASSIFY-READONLY-TYPE' -RequestId 'REQ-ROUTE-EXPERIMENT-CLASSIFY-READONLY-TYPE' -CorrelationId 'CORR-ROUTE-EXPERIMENT-CLASSIFY-READONLY-TYPE' -Title 'Classify saved route experiments' -Description 'Read-only authority classification training task.' -Scope $readOnlyScope -AcceptanceCriteria 'No source-code changes; classification artifact published.' -SuccessCriteria 'Assessment artifacts published.' -AssignedExecutor local -Type read_only_assessment -ExecutionMode async | Out-String | ConvertFrom-Json)
+
+            [string]$readOnly.intake_arbitration.decision | Should Be 'run_now'
+            $requestPayload = $readOnly.intake_arbitration.incoming.request_payload
+            [string]$requestPayload.task_mode | Should Be 'read_only_assessment'
+            [string]$requestPayload.task_class | Should Be 'read_only_assessment'
+            [bool]$requestPayload.bounded_edit_mode | Should Be $false
+            [bool]$requestPayload.metadata_json.changed_files_required_for_success | Should Be $false
+
+            $state = Get-Content -Path $fixture.StatePath -Raw | ConvertFrom-Json
+            $task = @($state.tasks | Where-Object { [string]$_.id -eq 'TSK-ROUTE-EXPERIMENT-CLASSIFY-READONLY-TYPE' } | Select-Object -First 1)
+            @($task).Count | Should Be 1
+            [string]$task[0].task_mode | Should Be 'read_only_assessment'
+            [string]$task[0].task_class | Should Be 'read_only_assessment'
+            [bool]$task[0].bounded_edit_mode | Should Be $false
+        }
+        finally {
+            if ($fixture -and (Test-Path -Path $fixture.Root)) {
+                Remove-Item -Path $fixture.Root -Recurse -Force
+            }
+        }
+    }
+
     It 'requires validation-only work to include a validation command before active-lane promotion' {
         $fixture = New-IntakeStateFixture
         try {

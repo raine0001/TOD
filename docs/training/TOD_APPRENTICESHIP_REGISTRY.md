@@ -45,6 +45,72 @@ Progression rule: one successful independent demonstration can advance a capabil
 
 ## Active Entries
 
+### APP-TOD-034: Patch Evidence Ingestion For Read-Only Audits
+
+Borrowed From: Codex/TOD blocker analysis during route experiment authority classification.
+
+Reason: After the read-only task type was preserved, TOD correctly carried `task_mode=read_only_assessment` and `bounded_edit_mode=false`, but local execution still blocked because the saved route experiment evidence is a `.patch` under `runtime_remote_training/cleanup_holds/`, which is outside the local engine bounded safe roots. The existing read-only audit lane expects JSON evidence under `runtime_remote_training/read_only_audit_artifacts/` and cannot consume saved patch evidence directly.
+
+Incident: `TOD-READONLY-PATCH-EVIDENCE-SAFE-ROOT-BLOCKER-20260721`
+
+Capability: TOD must safely ingest preserved patch evidence for read-only classification without treating the patch as an edit target, without broad write access to cleanup holds, and without copying unsafe route behavior into product files.
+
+Current Apprentice: TOD
+
+Progress: `borrowed`; Codex identified the safe-root blocker and named the smaller rung. No patch-ingestion capability has been implemented yet.
+
+Proficiency: `observed`; TOD produced the blocker through R3, but did not yet replan to an allowed evidence shape.
+
+Independent Demonstration: `pending`; TOD must either materialize an allowed read-only JSON evidence object from a saved patch or add a read-only-only patch evidence lane, then run a fresh classification that publishes JSON/MD artifacts without source-code mutation.
+
+Freeze: open; no learned capability exists yet for patch evidence ingestion.
+
+Retirement: open.
+
+### APP-TOD-033: Direct Chat Read-Only Task Mode Preservation
+
+Borrowed From: Codex control-plane repair after TOD attempted a read-only route-classification task.
+
+Reason: TOD was assigned `TOD-ROUTE-EXPERIMENT-AUTHORITY-CLASSIFICATION-V1` as `-Type read_only_assessment`, but `execute-chat-task` dropped the explicit type before intake arbitration. The task was reshaped into implementation work and blocked on bounded-edit requirements, even though the objective was read-only.
+
+Incident: `TOD-READONLY-EXECUTE-CHAT-TASK-TYPE-DROP-20260721`
+
+Capability: TOD must preserve explicit non-edit task modes through direct chat intake so read-only assessments, inspections, validation, recovery, and escalation tasks are not forced into bounded-edit packet shape.
+
+Current Apprentice: TOD
+
+Progress: `borrowed`; Codex repaired `scripts/TOD.ps1` so `execute-chat-task -Type read_only_assessment` becomes `task_mode=read_only_assessment` before arbitration, and added regression coverage in `tests/TOD.IntakeArbitration.Tests.ps1`.
+
+Proficiency: `observed`; TOD exposed the blocker, but Codex performed the control-plane repair.
+
+Independent Demonstration: `pending`; TOD must submit a fresh read-only assessment through `execute-chat-task -Type read_only_assessment`, show it reaches intake without bounded-edit fields, publish a meaningful read-only artifact, and avoid source-code mutation.
+
+Freeze: open; no learned capability exists yet for direct-chat non-edit task preservation.
+
+Retirement: open.
+
+### APP-TOD-032: Route Experiment Authority Classification
+
+Borrowed From: Codex validation and cleanup after mixed route-level cognition experiments.
+
+Reason: A saved patch from `tmp_remote_mim/core/routers/studio.py` and `tmp_remote_mim/core/routers/tod_ui.py` contained useful ideas mixed with route-level cognition, hardcoded visible replies, location/weather examples, response-authority audit UI, active conversation state, and phrase-triggered TOD responses. TOD needs to learn how to classify this kind of mixed patch before it can safely reintroduce any behavior.
+
+Incident: `MIM-TOD-ROUTE-EXPERIMENT-CLEANUP-20260721`
+
+Capability: TOD must inspect a saved dirty patch, classify each block as process support, reusable service candidate, route debt, hardcoded response authority, phrase patch, or prohibited semantic authority; preserve useful evidence; reject unsafe route-level cognition; and propose a learned-capability return path before any code changes.
+
+Current Apprentice: TOD
+
+Progress: `borrowed`; Codex preserved the dirty patch, restored product route files, and seeded the first classification artifact in `docs/training/hard-route-audit/TOD_ROUTE_EXPERIMENT_AUTHORITY_CLASSIFICATION_V1.md` and `runtime_remote_training/read_only_audit_artifacts/TOD_ROUTE_EXPERIMENT_AUTHORITY_CLASSIFICATION_V1.latest.json`.
+
+Proficiency: `observed`; TOD has not independently classified a mixed response-authority patch yet.
+
+Independent Demonstration: `pending`; TOD must rerun the patch classification from the saved patch without Codex-provided buckets, publish its own JSON/MD result, select one reusable service candidate, and produce a service-extraction plan with generalized tests.
+
+Freeze: open; no learned capability exists yet for mixed route experiment classification.
+
+Retirement: open.
+
 ### APP-TOD-031: Fresh Target Packet Loop Materialization
 
 Borrowed From: Codex control-plane repair and coaching.

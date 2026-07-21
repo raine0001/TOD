@@ -15468,6 +15468,7 @@ function Invoke-ExecuteChatTaskRequest {
         [string]$AcceptanceCriteria,
         [string]$SuccessCriteria,
         [string]$AssignedExecutor,
+        [string]$TaskType,
         [string]$TaskCategory,
         [string]$CorrelationId,
         [string]$TargetFile,
@@ -15544,10 +15545,13 @@ function Invoke-ExecuteChatTaskRequest {
     $resolvedCorrelationId = if (-not [string]::IsNullOrWhiteSpace($CorrelationId)) { [string]$CorrelationId } elseif (-not [string]::IsNullOrWhiteSpace($resolvedRequestId)) { [string]$resolvedRequestId } else { [string]$TaskId }
     $supersededLane = Supersede-ActiveDirectChatLane -ExistingLane (Get-ActiveDirectChatLaneSnapshot) -NewObjectiveId ([string]$objective.id) -NewTaskId ([string]$TaskId) -NewRequestId $resolvedRequestId -NewCorrelationId $resolvedCorrelationId
     $requestedTaskCategory = if (-not [string]::IsNullOrWhiteSpace($TaskCategory)) { [string]$TaskCategory } else { 'chat_execution' }
+    $requestedTaskType = if (-not [string]::IsNullOrWhiteSpace($TaskType)) { [string]$TaskType } else { 'implementation' }
     $taskModeProbe = [pscustomobject]@{
         title = if (-not [string]::IsNullOrWhiteSpace($Title)) { [string]$Title } else { "Chat task $TaskId" }
         scope = [string]$Scope
         description = [string]$resolvedDescription
+        type = $requestedTaskType
+        task_mode = $requestedTaskType
         task_category = $requestedTaskCategory
     }
     $resolvedTaskMode = Resolve-TodTaskMode -Task $taskModeProbe
@@ -19798,7 +19802,7 @@ switch ($Action) {
     "execute-chat-task" {
         if ([string]::IsNullOrWhiteSpace($TaskId)) { throw '-TaskId is required' }
 
-        $result = Invoke-ExecuteChatTaskRequest -ObjectiveId $ObjectiveId -TaskId $TaskId -RequestId $RequestId -Title $Title -Description $Description -Priority $Priority -Scope $Scope -AcceptanceCriteria $AcceptanceCriteria -SuccessCriteria $SuccessCriteria -AssignedExecutor $AssignedExecutor -TaskCategory $TaskCategory -CorrelationId $CorrelationId -TargetFile $TargetFile -EditMode $EditMode -OldText $OldText -NewText $NewText -ValidationCommand $ValidationCommand -ResolvedConfigPath $configPath -ResolvedStatePath $statePath -ExecutionMode $ExecutionMode
+        $result = Invoke-ExecuteChatTaskRequest -ObjectiveId $ObjectiveId -TaskId $TaskId -RequestId $RequestId -Title $Title -Description $Description -Priority $Priority -Scope $Scope -AcceptanceCriteria $AcceptanceCriteria -SuccessCriteria $SuccessCriteria -AssignedExecutor $AssignedExecutor -TaskType $Type -TaskCategory $TaskCategory -CorrelationId $CorrelationId -TargetFile $TargetFile -EditMode $EditMode -OldText $OldText -NewText $NewText -ValidationCommand $ValidationCommand -ResolvedConfigPath $configPath -ResolvedStatePath $statePath -ExecutionMode $ExecutionMode
         if ($SkipPostCompletionTail) {
             $runTaskPayload = if ($result.PSObject.Properties['run_task']) { $result.run_task } else { $null }
             [pscustomobject]@{
