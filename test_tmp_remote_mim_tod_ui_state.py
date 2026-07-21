@@ -1033,6 +1033,8 @@ class TodUiStateClassificationTests(unittest.TestCase):
         self.assertIn('id="todControlList"', source)
         self.assertIn("tod-message-tools", source)
         self.assertIn("Create Objective", source)
+        self.assertIn("data-icon", source)
+        self.assertIn("tod-message-bubble:hover .tod-message-tools", source)
         self.assertIn("Execution events stay in live activity", source)
         self.assertIn("tod-execution-banner{display:none", source)
         self.assertNotIn('id="todLifecycle"', source)
@@ -1045,6 +1047,8 @@ class TodUiStateClassificationTests(unittest.TestCase):
         self.assertIn("mim-tool-button", source)
         self.assertIn("mimMessageTools", source)
         self.assertIn("Create objective", source)
+        self.assertIn("mim-message:hover .mim-message-tools", source)
+        self.assertIn("mim-message.system .mim-message-tools", source)
         self.assertIn("Queue this as a bounded MIM/TOD follow-up", source)
         self.assertIn("Inspect the reasoning, context, and source evidence", source)
 
