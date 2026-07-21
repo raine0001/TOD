@@ -459,6 +459,8 @@ function New-LocalExecutionDifferentTargetDiscoveryArtifact {
         [Parameter(Mandatory = $true)][string]$OutputPath
     )
 
+    $taskCategory = Get-LocalExecutionTaskCategory -Context $Context
+    $isTargetSelection = [string]::Equals($taskCategory, 'target_selection', [System.StringComparison]::OrdinalIgnoreCase)
     $combined = Get-LocalExecutionCombinedText -Context $Context
     $forbidden = New-Object System.Collections.Generic.HashSet[string]([System.StringComparer]::OrdinalIgnoreCase)
     foreach ($match in [regex]::Matches($combined, '(?im)(tmp_remote_mim/[A-Za-z0-9_./-]+\.(?:py|html|js|json|css|md|txt)|scripts/[A-Za-z0-9_./-]+\.(?:ps1|psm1|py|json|md|txt)|core/routers/[A-Za-z0-9_./-]+\.py|[a-z0-9_]+_(?:guard|evidence|selection|candidate)[a-z0-9_]*)')) {
@@ -500,14 +502,25 @@ function New-LocalExecutionDifferentTargetDiscoveryArtifact {
     )
 
     $inspected = New-Object System.Collections.Generic.List[string]
+    $rejected = New-Object System.Collections.Generic.List[object]
     $selected = $null
     foreach ($candidate in $candidates) {
         if ($forbidden.Contains([string]$candidate.target_file) -or $forbidden.Contains([string]$candidate.candidate_key)) {
+            $rejected.Add([ordered]@{
+                    target_file = [string]$candidate.target_file
+                    candidate_key = [string]$candidate.candidate_key
+                    reason = 'forbidden_by_current_prompt_or_intervention'
+                }) | Out-Null
             continue
         }
         try {
             $candidateAbs = Resolve-LocalExecutionAbsoluteTargetPath -RelativePath ([string]$candidate.target_file) -Operation 'read'
             if (-not (Test-Path -Path $candidateAbs -PathType Leaf)) {
+                $rejected.Add([ordered]@{
+                        target_file = [string]$candidate.target_file
+                        candidate_key = [string]$candidate.candidate_key
+                        reason = 'candidate_file_missing'
+                    }) | Out-Null
                 continue
             }
             $inspected.Add([string]$candidate.target_file) | Out-Null
@@ -524,24 +537,40 @@ function New-LocalExecutionDifferentTargetDiscoveryArtifact {
             }
             $content = [System.IO.File]::ReadAllText($candidateAbs, [System.Text.UTF8Encoding]::new($false))
             if (-not [string]::IsNullOrWhiteSpace([string]$candidate.applied_marker) -and $content.Contains([string]$candidate.applied_marker)) {
+                $rejected.Add([ordered]@{
+                        target_file = [string]$candidate.target_file
+                        candidate_key = [string]$candidate.candidate_key
+                        reason = 'applied_marker_already_present'
+                    }) | Out-Null
                 continue
             }
             $selected = $candidate
             break
         }
         catch {
+            $rejected.Add([ordered]@{
+                    target_file = [string]$candidate.target_file
+                    candidate_key = [string]$candidate.candidate_key
+                    reason = 'candidate_inspection_failed'
+                }) | Out-Null
             continue
         }
     }
 
     if ($null -eq $selected) {
         return [ordered]@{
-            artifact_type = 'tod_different_target_discovery_artifact'
+            artifact_type = if ($isTargetSelection) { 'tod_target_selection_artifact' } else { 'tod_different_target_discovery_artifact' }
             status = 'no_candidate_available'
             selected_candidate_or_none = $null
+            selected_target = ''
             inspected_files = @($inspected.ToArray())
+            inspected_candidates = @($inspected.ToArray())
+            rejected_candidates = @($rejected.ToArray())
             candidate_count = 0
             why_selected = 'No existing non-forbidden candidate without an applied marker was found.'
+            selection_reason = 'No existing non-forbidden candidate without an applied marker was found.'
+            validation_plan = @()
+            next_bounded_packet_requirements = @('target_file', 'edit_mode', 'anchor_or_old_text', 'new_text_or_snippet', 'validation_command', 'expected_evidence')
             validation_command = ''
             rollback_note = 'Artifact only; remove generated discovery artifact to roll back.'
             prevention_lesson = 'Discovery must inspect current candidates and forbidden markers before selecting work.'
@@ -573,16 +602,22 @@ function New-LocalExecutionDifferentTargetDiscoveryArtifact {
     }
 
     return [ordered]@{
-        artifact_type = 'tod_different_target_discovery_artifact'
+        artifact_type = if ($isTargetSelection) { 'tod_target_selection_artifact' } else { 'tod_different_target_discovery_artifact' }
         status = 'candidate_selected'
         inspected_files = @($inspected.ToArray())
+        inspected_candidates = @($inspected.ToArray())
+        rejected_candidates = @($rejected.ToArray())
         candidate_count = @($inspected).Count
         selected_candidate_or_none = [ordered]@{
             target_file = [string]$selected.target_file
             candidate_key = [string]$selected.candidate_key
             expected_changed_files = @($selected.expected_changed_files)
         }
+        selected_target = [string]$selected.target_file
         why_selected = ('Selected {0} because it exists, is not forbidden, and did not already contain the applied marker.' -f [string]$selected.target_file)
+        selection_reason = ('Selected {0} because it exists, is not forbidden, and did not already contain the applied marker.' -f [string]$selected.target_file)
+        validation_plan = @('Form a bounded packet from the selected target, then run the focused tests named by the packet.')
+        next_bounded_packet_requirements = @('target_file', 'edit_mode', 'anchor_or_old_text', 'new_text_or_snippet', 'validation_command', 'expected_evidence')
         validation_command = 'Invoke-Pester targeted tests after packet materialization.'
         rollback_note = 'Artifact only; remove generated discovery artifact to roll back.'
         prevention_lesson = 'TOD must choose a fresh current-code target from inspected evidence instead of repeating forbidden or already-applied candidates.'
@@ -596,11 +631,15 @@ function Test-LocalExecutionDifferentTargetDiscoveryTask {
     param([Parameter(Mandatory = $true)]$Context)
 
     $category = Get-LocalExecutionTaskCategory -Context $Context
-    if (@('packet_formation', 'inspection', 'inspection_only', 'diagnostic_only', 'artifact_write', 'code_change') -notcontains $category) {
+    if (@('packet_formation', 'inspection', 'inspection_only', 'diagnostic_only', 'artifact_write', 'code_change', 'target_selection') -notcontains $category) {
         return $false
     }
 
     $text = (Get-LocalExecutionCombinedText -Context $Context).ToLowerInvariant()
+    if ([string]::Equals($category, 'target_selection', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return ($text -match 'target[-_\s]?selection|select(?:ing)?\s+(?:one\s+)?(?:fresh\s+)?target|choose(?:ing)?\s+(?:one\s+)?(?:fresh\s+)?target')
+    }
+
     $targetFiles = @(Get-LocalExecutionTargetFiles -Context $Context)
     $hasDiscoveryOutputTarget = (@($targetFiles | Where-Object {
                 ([string]$_) -match 'TOD_DIFFERENT_TARGET_DISCOVERY_DRILL\.latest\.json$'
@@ -621,7 +660,9 @@ function Invoke-LocalExecutionDifferentTargetDiscovery {
 
     $text = Get-LocalExecutionCombinedText -Context $Context
     $outputMatches = [regex]::Matches($text, 'runtime_remote_training/tod_independent_resolution_attempts/[A-Za-z0-9_./-]+?\.json')
-    $outputRel = 'runtime_remote_training/tod_independent_resolution_attempts/TOD_DIFFERENT_TARGET_DISCOVERY_DRILL.latest.json'
+    $taskCategory = Get-LocalExecutionTaskCategory -Context $Context
+    $isTargetSelection = [string]::Equals($taskCategory, 'target_selection', [System.StringComparison]::OrdinalIgnoreCase)
+    $outputRel = if ($isTargetSelection) { 'runtime_remote_training/tod_independent_resolution_attempts/TOD_TARGET_SELECTION.latest.json' } else { 'runtime_remote_training/tod_independent_resolution_attempts/TOD_DIFFERENT_TARGET_DISCOVERY_DRILL.latest.json' }
     if ($outputMatches.Count -gt 0) {
         $outputRel = ([string]$outputMatches[$outputMatches.Count - 1].Value).Trim()
     }
@@ -635,12 +676,19 @@ function Invoke-LocalExecutionDifferentTargetDiscovery {
     $artifact = New-LocalExecutionDifferentTargetDiscoveryArtifact -Context $Context -OutputPath $outputRel
     $artifact | ConvertTo-Json -Depth 12 | Set-Content -Path $outputAbs -Encoding UTF8
 
-    $selected = $artifact.PSObject.Properties['selected_candidate_or_none'] -and $null -ne $artifact.selected_candidate_or_none
+    $selectedCandidate = $null
+    if ($artifact -is [System.Collections.IDictionary] -and $artifact.Contains('selected_candidate_or_none')) {
+        $selectedCandidate = $artifact['selected_candidate_or_none']
+    }
+    elseif ($artifact.PSObject.Properties['selected_candidate_or_none']) {
+        $selectedCandidate = $artifact.selected_candidate_or_none
+    }
+    $selected = $null -ne $selectedCandidate
     $Result.summary = if ($selected) {
-        ('LocalExecutionEngine published a different-target discovery artifact and selected {0}.' -f [string]$artifact.selected_candidate_or_none.target_file)
+        ('LocalExecutionEngine published a {0} artifact and selected {1}.' -f $(if ($isTargetSelection) { 'target-selection' } else { 'different-target discovery' }), [string]$selectedCandidate.target_file)
     }
     else {
-        'LocalExecutionEngine published a different-target discovery artifact with no viable candidate.'
+        ('LocalExecutionEngine published a {0} artifact with no viable candidate.' -f $(if ($isTargetSelection) { 'target-selection' } else { 'different-target discovery' }))
     }
     $Result.files_changed = @($outputRel)
     $Result.tests_run = @('different-target discovery artifact written')
@@ -650,10 +698,10 @@ function Invoke-LocalExecutionDifferentTargetDiscovery {
     $Result.needs_escalation = $false
     $Result.structured_findings = @(
         [pscustomobject]@{
-            type = 'different_target_discovery'
-            status = [string]$artifact.status
-            selected_target = if ($selected) { [string]$artifact.selected_candidate_or_none.target_file } else { '' }
-            evidence = @($artifact.inspected_files)
+            type = if ($isTargetSelection) { 'target_selection' } else { 'different_target_discovery' }
+            status = if ($artifact -is [System.Collections.IDictionary] -and $artifact.Contains('status')) { [string]$artifact['status'] } else { [string]$artifact.status }
+            selected_target = if ($selected) { [string]$selectedCandidate.target_file } else { '' }
+            evidence = if ($artifact -is [System.Collections.IDictionary] -and $artifact.Contains('inspected_files')) { @($artifact['inspected_files']) } else { @($artifact.inspected_files) }
         }
     )
     $Result.raw_output = [pscustomobject]$artifact
@@ -1730,7 +1778,7 @@ function Test-LocalExecutionGenericBoundedTask {
     if (Test-LocalExecutionGenericRisk -Context $Context) { return $false }
 
     $taskCategory = Get-LocalExecutionTaskCategory -Context $Context
-    if (@('code_change', 'config_change', 'test_change', 'docs_change', 'packet_formation', 'artifact_write') -contains $taskCategory) {
+    if (@('code_change', 'config_change', 'test_change', 'docs_change', 'packet_formation', 'artifact_write', 'validation', 'validation_only') -contains $taskCategory) {
         return $true
     }
 
@@ -5101,7 +5149,83 @@ function Invoke-LocalExecutionGenericBoundedTask {
     )
 
     $promptText = Get-LocalExecutionPromptText -Context $Context
+    $rawEditMode = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Edit Mode'
+    if (-not [string]::IsNullOrWhiteSpace($rawEditMode)) {
+        $rawEditMode = ([regex]::Split([string]$rawEditMode, "\r?\n") | Select-Object -First 1).Trim()
+    }
+    $mode = Convert-ToLocalExecutionEditMode -Mode $rawEditMode
     $targets = @(Get-LocalExecutionTargetFiles -Context $Context)
+    $combinedTaskText = Get-LocalExecutionCombinedText -Context $Context
+    $validationOnlyForbidden = (
+        [string]::Equals($mode, 'validation_only', [System.StringComparison]::OrdinalIgnoreCase) -and
+        (
+            [string]$combinedTaskText -match '(?is)\bno\s+validation[-_ ]?only\b|\breject\s+validation[-_ ]?only\b|\bvalidation[-_ ]?only\s+completion\b' -or
+            [string]$combinedTaskText -match '(?is)\bRecovery\s+Mode\s*:\s*failed_material_patch\b' -or
+            [string]$combinedTaskText -match '(?is)\bchanged\s+target\s+file\b|\bfull\s+fix/validate/close\s+loop\b|\bbehavior-changing\s+patch\b'
+        )
+    )
+    if ($validationOnlyForbidden) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_validation_only_forbidden' -Reason 'LocalExecutionEngine rejected validation_only materialization because the task requires a behavior-changing recovery patch or an explicit blocker.' -MissingVariable 'behavior_changing_edit')
+    }
+    if ([string]::Equals($mode, 'validation_only', [System.StringComparison]::OrdinalIgnoreCase) -and @($targets).Count -eq 0) {
+        $validationCommand = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Validation Command'
+        if ([string]::IsNullOrWhiteSpace($validationCommand)) {
+            return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_needs_validation_command' -Reason 'LocalExecutionEngine requires a Validation Command for targetless validation_only tasks.' -MissingVariable 'validation_command')
+        }
+        $commandCapture = Invoke-LocalShellCapture -Command $validationCommand -WorkingDirectory $script:LocalEngineRepoRoot
+        $validationExitZero = ([int]$commandCapture.exit_code -eq 0)
+        $validationStderrEmpty = Test-LocalShellStderrClean -Stderr ([string]$commandCapture.stderr)
+        $validationStdout = [string]$commandCapture.stdout
+        $validationStderr = [string]$commandCapture.stderr
+        $validationCombinedOutput = "$validationStdout`n$validationStderr"
+        $pythonUnittestOk = (
+            ([string]$validationCommand -match '^\s*python\s+-m\s+unittest\b') -and
+            $validationExitZero -and
+            ($validationCombinedOutput -match '(?ms)Ran\s+\d+\s+tests?.*?\bOK\b')
+        )
+        $pythonUnittestFinalizerResidue = (
+            ([string]$validationCommand -match '^\s*python\s+-m\s+unittest\b') -and
+            ($validationCombinedOutput -match '(?ms)Ran\s+\d+\s+tests?.*?\bOK\b') -and
+            ($validationStderr -match 'Fatal Python error: none_dealloc|refcount error in a C extension|Python runtime state: finalizing')
+        )
+        $passed = (($validationExitZero -and $validationStderrEmpty) -or $pythonUnittestOk -or $pythonUnittestFinalizerResidue)
+        $validationChecks = @(
+            [pscustomobject]@{ name = 'focused_validation_exit_zero'; passed = $validationExitZero },
+            [pscustomobject]@{ name = 'focused_validation_stderr_empty'; passed = $validationStderrEmpty },
+            [pscustomobject]@{ name = 'python_unittest_ok'; passed = $pythonUnittestOk },
+            [pscustomobject]@{ name = 'python_unittest_ok_with_finalizer_residue'; passed = $pythonUnittestFinalizerResidue },
+            [pscustomobject]@{ name = 'validation_only_no_file_change_expected'; passed = $passed }
+        )
+        $Result.summary = 'LocalExecutionEngine completed targetless validation_only execution and published command evidence.'
+        $Result.files_changed = @()
+        $Result.tests_run = @($validationCommand)
+        $Result.test_results = @($validationChecks | ForEach-Object { if ([bool]$_.passed) { 'pass' } else { 'fail' } })
+        $Result.failures = @($(if ($passed) { @() } else { [string]$commandCapture.stderr; [string]$commandCapture.stdout }))
+        $Result.recommendations = @()
+        $Result | Add-Member -NotePropertyName commands_run -NotePropertyValue @($validationCommand) -Force
+        $Result | Add-Member -NotePropertyName validation_results -NotePropertyValue @($validationChecks) -Force
+        $Result | Add-Member -NotePropertyName blockers -NotePropertyValue @() -Force
+        $Result | Add-Member -NotePropertyName confidence -NotePropertyValue $(if ($passed) { 'medium-high' } else { 'low' }) -Force
+        $Result | Add-Member -NotePropertyName rollback_hint -NotePropertyValue '' -Force
+        $Result | Add-Member -NotePropertyName command_output -NotePropertyValue ([string]$commandCapture.stdout) -Force
+        $Result | Add-Member -NotePropertyName diff_summary -NotePropertyValue 'Targetless validation_only task changed no source files.' -Force
+        $Result | Add-Member -NotePropertyName no_change_required -NotePropertyValue $true -Force
+        $Result.structured_findings = @(
+            [pscustomobject]@{ type = 'validation'; checks = $validationChecks },
+            [pscustomobject]@{ type = 'command'; capture = $commandCapture }
+        )
+        $Result.raw_output = [pscustomobject]@{
+            engine = $Spec
+            task_context = $Context
+            action = 'targetless_validation_only'
+            validation_checks = $validationChecks
+            command_capture = $commandCapture
+            generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        }
+        $Result | Add-Member -NotePropertyName reason_code -NotePropertyValue $(if ($passed) { '' } else { 'local_fallback_validation_failed' }) -Force
+        $Result | Add-Member -NotePropertyName recovery_state -NotePropertyValue 'not_needed' -Force
+        return (Complete-EngineExecutionResult -Result $Result -Status $(if ($passed) { 'completed' } else { 'failed' }))
+    }
     if (@($targets).Count -eq 0) {
         return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_needs_target_or_scope' -Reason 'LocalExecutionEngine could not infer a single bounded target file from the task prompt or scope.' -MissingVariable 'target_file')
     }
@@ -5120,11 +5244,6 @@ function Invoke-LocalExecutionGenericBoundedTask {
     catch {
         return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_path_not_allowed' -Reason $_.Exception.Message -MissingVariable 'allowed_path')
     }
-    $rawEditMode = Get-LocalExecutionDirectiveValue -PromptText $promptText -FieldName 'Edit Mode'
-    if (-not [string]::IsNullOrWhiteSpace($rawEditMode)) {
-        $rawEditMode = ([regex]::Split([string]$rawEditMode, "\r?\n") | Select-Object -First 1).Trim()
-    }
-    $mode = Convert-ToLocalExecutionEditMode -Mode $rawEditMode
     $targetExistedBefore = Test-Path -Path $absoluteTargetPath
     if (-not $targetExistedBefore -and [string]::Equals($mode, 'artifact_write', [System.StringComparison]::OrdinalIgnoreCase)) {
         New-Item -ItemType Directory -Path (Split-Path -Parent $absoluteTargetPath) -Force | Out-Null
@@ -5145,19 +5264,6 @@ function Invoke-LocalExecutionGenericBoundedTask {
     if ([string]::IsNullOrWhiteSpace($mode) -and $targetFile.ToLowerInvariant().EndsWith('.md') -and (Get-LocalExecutionCombinedText -Context $Context).ToLowerInvariant() -match '\bsection\b') {
         $mode = 'append_section'
     }
-    $combinedTaskText = Get-LocalExecutionCombinedText -Context $Context
-    $validationOnlyForbidden = (
-        [string]::Equals($mode, 'validation_only', [System.StringComparison]::OrdinalIgnoreCase) -and
-        (
-            [string]$combinedTaskText -match '(?is)\bno\s+validation[-_ ]?only\b|\breject\s+validation[-_ ]?only\b|\bvalidation[-_ ]?only\s+completion\b' -or
-            [string]$combinedTaskText -match '(?is)\bRecovery\s+Mode\s*:\s*failed_material_patch\b' -or
-            [string]$combinedTaskText -match '(?is)\bchanged\s+target\s+file\b|\bfull\s+fix/validate/close\s+loop\b|\bbehavior-changing\s+patch\b'
-        )
-    )
-    if ($validationOnlyForbidden) {
-        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'local_fallback_validation_only_forbidden' -Reason 'LocalExecutionEngine rejected validation_only materialization because the task requires a behavior-changing recovery patch or an explicit blocker.' -MissingVariable 'behavior_changing_edit')
-    }
-
     switch ($mode) {
         'append_section' {
             $sectionSpec = Get-LocalExecutionMarkdownSectionSpec -Context $Context -PromptText $promptText -TargetFile $targetFile
@@ -7045,6 +7151,7 @@ function Get-LocalExecutionEngineSpec {
             "read_only_audit_artifact_publication",
             "source_anchor_observation_artifact_publication",
             "different_target_discovery_artifact_publication",
+            "target_selection_artifact_publication",
             "packet_body_synthesis_artifact_publication",
             "python_snippet_body_synthesis_artifact_publication",
             "python_route_body_synthesis_artifact_publication",

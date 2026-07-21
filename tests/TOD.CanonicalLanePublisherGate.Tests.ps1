@@ -438,4 +438,44 @@ Describe 'TOD canonical lane publisher gate' {
         (Get-Content -Raw -Path (Join-Path $script:sharedRoot 'TOD_MIM_SHARED_TRUTH.latest.json')) | Should Be $originalSharedTruth
         @($script:RemotePublishCalls).Count | Should Be 0
     }
+
+    It 'does not preserve stale activity identity when the incoming stream has a fresh top-level task without events' {
+        $path = Join-Path $script:sharedRoot 'TOD_ACTIVITY_STREAM.latest.json'
+        Write-TestJson -Path $path -Payload ([ordered]@{
+            generated_at = '2026-05-05T02:00:00.0000000Z'
+            updated_at = '2026-05-05T02:00:00.0000000Z'
+            packet_type = 'tod-activity-stream-v1'
+            event = 'local_task_blocked'
+            status = 'blocked'
+            objective_id = 'OBJ-STALE'
+            task_id = 'TSK-STALE'
+            request_id = 'REQ-STALE'
+            execution_id = 'EXEC-STALE'
+            summary = 'Stale activity should not remain authoritative.'
+        })
+
+        $freshPayload = [ordered]@{
+            generated_at = '2026-05-05T02:30:00.0000000Z'
+            updated_at = '2026-05-05T02:30:00.0000000Z'
+            packet_type = 'tod-activity-stream-v1'
+            source = 'tod.local.run-task'
+            surface = 'tod-run-task'
+            status = 'completed'
+            objective_id = 'OBJ-FRESH'
+            task_id = 'TSK-FRESH'
+            request_id = 'REQ-FRESH'
+            execution_id = 'EXEC-FRESH'
+            summary = 'Fresh top-level payload is authoritative even without event rows.'
+            current_action = 'Completed fresh validation.'
+        }
+
+        $merged = Merge-TodActivityStreamPayload -Path $path -Payload $freshPayload
+
+        [string]$merged.objective_id | Should Be 'OBJ-FRESH'
+        [string]$merged.task_id | Should Be 'TSK-FRESH'
+        [string]$merged.request_id | Should Be 'REQ-FRESH'
+        [string]$merged.execution_id | Should Be 'EXEC-FRESH'
+        [string]$merged.summary | Should Be 'Fresh top-level payload is authoritative even without event rows.'
+        [string]$merged.status | Should Be 'completed'
+    }
 }

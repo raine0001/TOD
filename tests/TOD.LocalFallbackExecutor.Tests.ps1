@@ -383,12 +383,61 @@ Required output fields: inspected_files, candidate_count, selected_candidate_or_
             $updated = Get-Content -Path $target -Raw | ConvertFrom-Json
 
             [string]$result.status | Should Be 'completed'
+            [string]$result.summary | Should Match 'selected tmp_remote_mim/core/routers/studio.py'
             (@($result.files_changed) -contains $relativePath) | Should Be $true
             [string]$updated.status | Should Be 'candidate_selected'
             @($updated.inspected_files).Count | Should BeGreaterThan 2
             [string]$updated.selected_candidate_or_none.target_file | Should Be 'tmp_remote_mim/core/routers/studio.py'
             @($updated.selected_candidate_or_none.expected_changed_files) -contains 'tmp_remote_mim/tests/test_studio_training_chat.py' | Should Be $true
             [string]$updated.credit_decision.reason | Should Match 'Discovery artifact only'
+
+            Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force
+        }
+        finally {
+            $script:LocalEngineRepoRoot = $originalRoot
+            if (Test-Path -Path $tempRoot) { Remove-Item -Path $tempRoot -Recurse -Force }
+        }
+    }
+
+    It 'publishes target-selection evidence without requiring a bounded edit target first' {
+        $originalRoot = $script:LocalEngineRepoRoot
+        $tempRoot = Join-Path $repoRoot ('tod/out/tests/local-fallback-target-selection-' + [guid]::NewGuid().ToString('N'))
+        $relativePath = 'runtime_remote_training/tod_independent_resolution_attempts/TOD_TARGET_SELECTION.latest.json'
+        $target = Join-Path $tempRoot ($relativePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        try {
+            $script:LocalEngineRepoRoot = $tempRoot
+            foreach ($fixturePath in @(
+                'tmp_remote_mim/core/routers/studio.py',
+                'tmp_remote_mim/tests/test_studio_training_chat.py',
+                'tools/score_mim_operator_impact_live_10.py',
+                'tools/build_mim_operator_impact_scorecard.py'
+            )) {
+                $absoluteFixture = Join-Path $tempRoot ($fixturePath -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+                New-Item -ItemType Directory -Path (Split-Path -Parent $absoluteFixture) -Force | Out-Null
+                [System.IO.File]::WriteAllText($absoluteFixture, ('# fixture: ' + $fixturePath), (New-Object System.Text.UTF8Encoding($false)))
+            }
+
+            $promptPath = New-LocalFallbackPromptFile -Content @'
+Objective: TOD-INDEPENDENT-STATUS-TRUTH-REPRODUCTION-V1B
+Task mode: target_selection
+Select one fresh target for a later bounded edit packet.
+Do not modify source code during target selection.
+Required output fields: inspected_candidates, selected_target, rejected_candidates, selection_reason, validation_plan, next_bounded_packet_requirements
+'@
+            $scope = 'Select one fresh target for a later bounded edit packet, but do not modify source code during target selection.'
+            $context = New-LocalFallbackContext -TaskId 'TSK-LF-TARGET-SELECTION' -ObjectiveId 'OBJ-LF' -Title 'Target selection before bounded packet materialization' -Scope $scope -PromptPath $promptPath -Metadata @{ task_category = 'target_selection' }
+
+            $result = Invoke-LocalExecutionEngine -Context $context
+            $updated = Get-Content -Path $target -Raw | ConvertFrom-Json
+
+            [string]$result.status | Should Be 'completed'
+            (@($result.files_changed) -contains $relativePath) | Should Be $true
+            [string]$updated.artifact_type | Should Be 'tod_target_selection_artifact'
+            [string]$updated.status | Should Be 'candidate_selected'
+            [string]$updated.selected_target | Should Be 'tmp_remote_mim/core/routers/studio.py'
+            @($updated.inspected_candidates).Count | Should BeGreaterThan 0
+            @($updated.next_bounded_packet_requirements) -contains 'target_file' | Should Be $true
+            [bool]$updated.credit_decision.independent_tod_resolution | Should Be $false
 
             Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force
         }

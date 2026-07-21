@@ -374,6 +374,85 @@ No source code modifications.
         }
     }
 
+    It 'requires validation-only work to include a validation command before active-lane promotion' {
+        $fixture = New-IntakeStateFixture
+        try {
+            foreach ($relativePath in @($intakeArtifactRelativePaths)) {
+                $pathValue = Join-Path $repoRoot $relativePath
+                if (Test-Path -Path $pathValue -PathType Leaf) {
+                    Remove-Item -Path $pathValue -Force
+                }
+            }
+
+            $missingValidationCommandScope = @"
+Task mode: validation
+Edit Mode: validation_only
+Validate the live TOD status truth projection.
+"@
+            $missingValidationCommand = (& $todScript -Action execute-chat-task -ConfigPath $fixture.ConfigPath -StatePath $fixture.StatePath -ObjectiveId 'TOD-VALIDATION-LANE-REJECTION-V1' -TaskId 'TSK-VALIDATION-MISSING-COMMAND' -RequestId 'REQ-VALIDATION-MISSING-COMMAND' -CorrelationId 'CORR-VALIDATION-MISSING-COMMAND' -Title 'Malformed validation-only task' -Description 'Validation-only work must name its validation command before promotion.' -Scope $missingValidationCommandScope -AcceptanceCriteria 'Must reject missing validation command.' -SuccessCriteria 'Must reject missing validation command.' -AssignedExecutor local -TaskCategory validation -ExecutionMode async | Out-String | ConvertFrom-Json)
+
+            [string]$missingValidationCommand.intake_arbitration.decision | Should Be 'rejected_before_active_lane'
+            [string]$missingValidationCommand.intake_arbitration.pre_active_lane_gate.reason_code | Should Be 'malformed_validation_packet'
+            @($missingValidationCommand.intake_arbitration.pre_active_lane_gate.missing_fields) -contains 'validation_command' | Should Be $true
+
+            $validValidationScope = @"
+Task mode: validation
+Edit Mode: validation_only
+Validation Command: git status --short
+Validate the live TOD status truth projection.
+"@
+            $validValidation = (& $todScript -Action execute-chat-task -ConfigPath $fixture.ConfigPath -StatePath $fixture.StatePath -ObjectiveId 'TOD-VALIDATION-LANE-REJECTION-V1' -TaskId 'TSK-VALIDATION-WITH-COMMAND' -RequestId 'REQ-VALIDATION-WITH-COMMAND' -CorrelationId 'CORR-VALIDATION-WITH-COMMAND' -Title 'Valid validation-only task' -Description 'Validation-only work with command should be allowed without a target file.' -Scope $validValidationScope -AcceptanceCriteria 'Validation command present.' -SuccessCriteria 'Validation command present.' -AssignedExecutor local -TaskCategory validation -ExecutionMode async | Out-String | ConvertFrom-Json)
+
+            [string]$validValidation.intake_arbitration.decision | Should Be 'run_now'
+            [string]$validValidation.intake_arbitration.pre_active_lane_gate.reason_code | Should Be 'canonical_validation_task_mode_valid'
+            [bool]$validValidation.intake_arbitration.pre_active_lane_gate.canonical_contract.target_file_required | Should Be $false
+            [string]$validValidation.intake_arbitration.pre_active_lane_gate.canonical_contract.validation_command | Should Be 'git status --short'
+
+            $validPromptPath = Join-Path $repoRoot 'tod/out/prompts/TSK-VALIDATION-WITH-COMMAND.md'
+            Test-Path -Path $validPromptPath -PathType Leaf | Should Be $true
+            $validPromptText = Get-Content -Path $validPromptPath -Raw
+            $validPromptText | Should Match '(?m)^Edit Mode:\s*validation_only\s*$'
+            $validPromptText | Should Match '(?m)^Validation Command:\s*git status --short\s*$'
+        }
+        finally {
+            if ($fixture -and (Test-Path -Path $fixture.Root)) {
+                Remove-Item -Path $fixture.Root -Recurse -Force
+            }
+        }
+    }
+
+    It 'accepts target-selection work without a target file before bounded edit materialization' {
+        $fixture = New-IntakeStateFixture
+        try {
+            foreach ($relativePath in @($intakeArtifactRelativePaths)) {
+                $pathValue = Join-Path $repoRoot $relativePath
+                if (Test-Path -Path $pathValue -PathType Leaf) {
+                    Remove-Item -Path $pathValue -Force
+                }
+            }
+
+            $targetSelectionScope = @"
+Task mode: target_selection
+TOD must select one fresh harmless status/UI target.
+Inspect candidate files, reject unsuitable candidates, choose one target, and publish a target-selection artifact.
+No source code modifications in this rung.
+"@
+            $targetSelection = (& $todScript -Action execute-chat-task -ConfigPath $fixture.ConfigPath -StatePath $fixture.StatePath -ObjectiveId 'TOD-TARGET-SELECTION-MODE-RUNG-V1' -TaskId 'TSK-TARGET-SELECTION-MODE-RUNG-V1' -RequestId 'REQ-TARGET-SELECTION-MODE-RUNG-V1' -CorrelationId 'CORR-TARGET-SELECTION-MODE-RUNG-V1' -Title 'TOD target selection mode rung' -Description 'TOD selects the target before bounded edit packet materialization.' -Scope $targetSelectionScope -AcceptanceCriteria 'No target_file required until target selection finishes.' -SuccessCriteria 'Target-selection artifact published.' -AssignedExecutor local -TaskCategory training -ExecutionMode async | Out-String | ConvertFrom-Json)
+
+            [string]$targetSelection.intake_arbitration.decision | Should Be 'run_now'
+            [string]$targetSelection.intake_arbitration.pre_active_lane_gate.reason_code | Should Be 'canonical_target_selection_task_mode_valid'
+            [bool]$targetSelection.intake_arbitration.pre_active_lane_gate.canonical_contract.target_file_required | Should Be $false
+            [bool]$targetSelection.intake_arbitration.pre_active_lane_gate.canonical_contract.source_code_modification_allowed | Should Be $false
+            [string]$targetSelection.intake_arbitration.pre_active_lane_gate.canonical_contract.task_mode | Should Be 'target_selection'
+            @($targetSelection.intake_arbitration.pre_active_lane_gate.canonical_contract.expected_evidence) -contains 'target_selection_artifact' | Should Be $true
+        }
+        finally {
+            if ($fixture -and (Test-Path -Path $fixture.Root)) {
+                Remove-Item -Path $fixture.Root -Recurse -Force
+            }
+        }
+    }
+
     It 'allows packet formation artifact writes to synthesize the packet body while preserving normal artifact-write content requirements' {
         $fixture = New-IntakeStateFixture
         try {

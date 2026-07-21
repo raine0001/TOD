@@ -6236,6 +6236,7 @@ function Resolve-TaskCategory {
     }
 
     if ($blob -match '(?is)\bread[-_\s]?only[-_\s]?assessment\b|\bcapability\s+assessment\b') { return "read_only_assessment" }
+    if ($blob -match '(?is)\btarget[-_\s]?selection\b|\bselect(?:ing)?\s+(?:one\s+)?(?:fresh\s+)?target\b|\bchoose\s+(?:one\s+)?(?:fresh\s+)?target\b|\bidentify\s+(?:one\s+)?(?:fresh\s+)?target\b') { return "target_selection" }
     if ($blob -match '(?is)\btask\s+class\s*:\s*report_only\b|\breport[-_\s]?only\b') { return "report_only" }
     if ($blob -match 'repo index|index-repo|indexing') { return "repo_index" }
     if ($blob -match 'module summary|summar') { return "module_summary" }
@@ -6253,24 +6254,6 @@ function Resolve-TaskCategory {
 function Resolve-TodTaskMode {
     param($Task)
 
-    $explicitValues = New-Object System.Collections.Generic.List[string]
-    foreach ($fieldName in @('task_mode', 'task_class', 'task_category', 'type')) {
-        if ($Task -and $Task.PSObject.Properties[$fieldName] -and -not [string]::IsNullOrWhiteSpace([string]$Task.$fieldName)) {
-            [void]$explicitValues.Add(([string]$Task.$fieldName).Trim().ToLowerInvariant())
-        }
-    }
-
-    foreach ($value in @($explicitValues.ToArray())) {
-        switch ($value) {
-            { $_ -in @('read_only_assessment', 'read_only_audit', 'capability_assessment', 'assessment', 'report_only', 'review_only') } { return 'read_only_assessment' }
-            { $_ -in @('inspection', 'inspection_only', 'diagnostic_only', 'inventory_only', 'source_anchor_observation') } { return 'inspection' }
-            { $_ -in @('validation', 'validation_only', 'verify', 'verification') } { return 'validation' }
-            { $_ -in @('recovery', 'repair', 'diagnostic_implementation_repair', 'blocked-result-closure-diagnostic') } { return 'recovery' }
-            { $_ -in @('escalation', 'operator_admin_repair') } { return 'escalation' }
-            { $_ -in @('implementation', 'code_change', 'chat_execution', 'bridge_runtime', 'packet_formation') } { return 'implementation' }
-        }
-    }
-
     $blob = if (Get-Command -Name Get-TaskRoutingText -ErrorAction SilentlyContinue) {
         (Get-TaskRoutingText -Task $Task).ToLowerInvariant()
     }
@@ -6282,8 +6265,42 @@ function Resolve-TodTaskMode {
         ) -join ' ').ToLowerInvariant()
     }
 
+    $hasTargetSelectionSignal = (
+        $blob -match '(?is)\btarget[-_\s]?selection\b' -or
+        $blob -match '(?is)\bselect(?:ing)?\s+(?:one\s+)?(?:fresh\s+)?target\b' -or
+        $blob -match '(?is)\bchoose\s+(?:one\s+)?(?:fresh\s+)?target\b' -or
+        $blob -match '(?is)\bidentify\s+(?:one\s+)?(?:fresh\s+)?target\b'
+    )
+    $hasExplicitBoundedEditDirective = (
+        (Test-ExplicitBooleanTrue -Value (Get-TaskExplicitFieldValue -Task $Task -Names @('bounded_edit_mode', 'boundedEditMode'))) -or
+        $blob -match '(?im)^\s*(target\s+file|edit\s+mode|old\s+text|new\s+text|anchor_or_old_text|new_text_or_snippet)\s*:'
+    )
+    if ($hasTargetSelectionSignal -and -not $hasExplicitBoundedEditDirective) {
+        return 'target_selection'
+    }
+
+    $explicitValues = New-Object System.Collections.Generic.List[string]
+    foreach ($fieldName in @('task_mode', 'task_class', 'task_category', 'type')) {
+        if ($Task -and $Task.PSObject.Properties[$fieldName] -and -not [string]::IsNullOrWhiteSpace([string]$Task.$fieldName)) {
+            [void]$explicitValues.Add(([string]$Task.$fieldName).Trim().ToLowerInvariant())
+        }
+    }
+
+    foreach ($value in @($explicitValues.ToArray())) {
+        switch ($value) {
+            { $_ -in @('read_only_assessment', 'read_only_audit', 'capability_assessment', 'assessment', 'report_only', 'review_only') } { return 'read_only_assessment' }
+            { $_ -in @('inspection', 'inspection_only', 'diagnostic_only', 'inventory_only', 'source_anchor_observation') } { return 'inspection' }
+            { $_ -in @('target_selection', 'target-selection', 'target_discovery', 'target-discovery') } { return 'target_selection' }
+            { $_ -in @('validation', 'validation_only', 'verify', 'verification') } { return 'validation' }
+            { $_ -in @('recovery', 'repair', 'diagnostic_implementation_repair', 'blocked-result-closure-diagnostic') } { return 'recovery' }
+            { $_ -in @('escalation', 'operator_admin_repair') } { return 'escalation' }
+            { $_ -in @('implementation', 'code_change', 'chat_execution', 'bridge_runtime', 'packet_formation') } { return 'implementation' }
+        }
+    }
+
     if ($blob -match '(?is)\bread[-_\s]?only[-_\s]?assessment\b|\bcapability\s+assessment\b') { return 'read_only_assessment' }
     if (($blob -match '(?is)\bread[-\s]?only\b|\bno\s+source\s+code\s+modified\b|\bno\s+code\s+changes?\b') -and ($blob -match '(?is)\bassessment\b|\baudit\b|\breport\b')) { return 'read_only_assessment' }
+    if ($blob -match '(?is)\btarget[-_\s]?selection\b|\bselect(?:ing)?\s+(?:one\s+)?(?:fresh\s+)?target\b|\bchoose\s+(?:one\s+)?(?:fresh\s+)?target\b|\bidentify\s+(?:one\s+)?(?:fresh\s+)?target\b') { return 'target_selection' }
     if ($blob -match '(?is)\binspect\b|\binspection\b|\bscan\b|\blocate\b|\bfind\b|\breview evidence\b') { return 'inspection' }
     if ($blob -match '(?is)\bvalidate\b|\bvalidation\b|\bverify\b|\bverification\b|\bsmoke\b|\bregression\b') { return 'validation' }
     if ($blob -match '(?is)\brecover\b|\brecovery\b|\brepair\b|\bblocked\b') { return 'recovery' }
@@ -6294,7 +6311,7 @@ function Resolve-TodTaskMode {
 function Test-TodReadOnlyTaskMode {
     param([AllowEmptyString()][string]$TaskMode)
 
-    return ([string]$TaskMode).ToLowerInvariant() -in @('read_only_assessment', 'inspection', 'validation')
+    return ([string]$TaskMode).ToLowerInvariant() -in @('read_only_assessment', 'inspection', 'target_selection', 'validation')
 }
 
 function Get-TaskRoutingText {
@@ -7893,7 +7910,25 @@ function Test-TaskAllowsLocalExecutionWithoutMaterialization {
     }
 
     $category = ([string]$TaskCategory).ToLowerInvariant()
-    if (@('read_only_assessment', 'report_only', 'diagnostic_only', 'inspection_only', 'inspection', 'review_only', 'source_anchor_observation') -contains $category) {
+    $taskMode = if (Get-Command -Name Resolve-TodTaskMode -ErrorAction SilentlyContinue) { Resolve-TodTaskMode -Task $Task } else { '' }
+    $modeOrCategory = @($category, ([string]$taskMode).ToLowerInvariant()) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
+    if ($modeOrCategory -contains 'target_selection') {
+        $taskTextForTargetSelection = if (Get-Command -Name Get-TaskRoutingText -ErrorAction SilentlyContinue) {
+            Get-TaskRoutingText -Task $Task
+        }
+        else {
+            ''
+        }
+        if ($taskTextForTargetSelection -match '(?im)^\s*(Target File|Edit Mode|Old Text|New Text|Packet Source)\s*:') {
+            return $false
+        }
+        return $true
+    }
+
+    if (@('read_only_assessment', 'report_only', 'diagnostic_only', 'inspection_only', 'inspection', 'review_only', 'source_anchor_observation', 'validation', 'validation_only') -contains $category) {
+        if (@('validation', 'validation_only') -contains $category) {
+            return $true
+        }
         $materializationCandidates = if ($null -ne $TaskMaterialization -and $TaskMaterialization.PSObject.Properties['target_file_candidates']) {
             @($TaskMaterialization.target_file_candidates)
         }
@@ -8245,6 +8280,11 @@ function Resolve-LocalExecutionSuitability {
             'inspection' {
                 $classification = 'local_supported'
                 $reason = 'inspection_is_local_first'
+                $boundedLocalSlice = $true
+            }
+            'target_selection' {
+                $classification = 'local_supported'
+                $reason = 'target_selection_is_local_first'
                 $boundedLocalSlice = $true
             }
             'validation' {
@@ -14783,6 +14823,22 @@ function Sync-CodexHandoffTaskMirror {
     if ([string]::IsNullOrWhiteSpace($taskCategory)) {
         $taskCategory = 'chat_execution'
     }
+    $taskClass = ''
+    if ($Request.PSObject.Properties['task_class'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.task_class)) {
+        $taskClass = [string]$Request.task_class
+    }
+    elseif ($Request.PSObject.Properties['task_mode'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.task_mode)) {
+        $taskClass = [string]$Request.task_mode
+    }
+    elseif ($metadata.PSObject.Properties['task_class'] -and -not [string]::IsNullOrWhiteSpace([string]$metadata.task_class)) {
+        $taskClass = [string]$metadata.task_class
+    }
+    elseif ($metadata.PSObject.Properties['task_mode'] -and -not [string]::IsNullOrWhiteSpace([string]$metadata.task_mode)) {
+        $taskClass = [string]$metadata.task_mode
+    }
+    else {
+        $taskClass = 'implementation'
+    }
 
     $updatedAt = Get-UtcNow
     $state = Load-State
@@ -14803,7 +14859,8 @@ function Sync-CodexHandoffTaskMirror {
             remote_task_id = $resolvedTaskId
             objective_id = $resolvedObjectiveId
             title = $resolvedTitle
-            type = 'programming'
+            type = $taskClass
+            task_class = $taskClass
             task_category = $taskCategory
             scope = $resolvedScope
             dependencies = @()
@@ -14846,6 +14903,14 @@ function Sync-CodexHandoffTaskMirror {
             $task | Add-Member -NotePropertyName task_category -NotePropertyValue ([string]$taskCategory) -Force
             $changed = $true
         }
+        if (-not $task.PSObject.Properties['type'] -or -not [string]::Equals([string]$task.type, [string]$taskClass, [System.StringComparison]::Ordinal)) {
+            $task.type = $taskClass
+            $changed = $true
+        }
+        if (-not $task.PSObject.Properties['task_class'] -or -not [string]::Equals([string]$task.task_class, [string]$taskClass, [System.StringComparison]::Ordinal)) {
+            $task | Add-Member -NotePropertyName task_class -NotePropertyValue ([string]$taskClass) -Force
+            $changed = $true
+        }
         if (-not $task.PSObject.Properties['source'] -or -not [string]::Equals([string]$task.source, 'bridge_runtime_sync', [System.StringComparison]::Ordinal)) {
             $task | Add-Member -NotePropertyName source -NotePropertyValue 'bridge_runtime_sync' -Force
             $changed = $true
@@ -14886,7 +14951,7 @@ function Sync-CodexHandoffTaskMirror {
             }
         }
     }
-    foreach ($packetFieldName in @('bounded_edit_mode', 'validation_only', 'edit_mode', 'intended_edit_mode', 'old_text', 'exact_current_anchor_or_old_text', 'new_text', 'different_new_text', 'validation_command', 'validation_pattern')) {
+    foreach ($packetFieldName in @('bounded_edit_mode', 'validation_only', 'task_mode', 'task_class', 'edit_mode', 'intended_edit_mode', 'old_text', 'exact_current_anchor_or_old_text', 'new_text', 'different_new_text', 'validation_command', 'validation_pattern')) {
         $packetValue = $null
         $hasPacketValue = $false
         if ($Request.PSObject.Properties[$packetFieldName] -and $null -ne $Request.$packetFieldName) {
@@ -14935,6 +15000,7 @@ function Write-CodexHandoffTaskPackage {
     $taskTitle = if ($Request.PSObject.Properties['title'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.title)) { [string]$Request.title } elseif ($Request.PSObject.Properties['metadata_json'] -and $null -ne $Request.metadata_json -and $Request.metadata_json.PSObject.Properties['task_title'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.metadata_json.task_title)) { [string]$Request.metadata_json.task_title } else { "Bridge task $taskId" }
     $taskScope = if ($Request.PSObject.Properties['scope'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.scope)) { [string]$Request.scope } elseif ($Request.PSObject.Properties['summary'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.summary)) { [string]$Request.summary } elseif ($Request.PSObject.Properties['requested_outcome'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.requested_outcome)) { [string]$Request.requested_outcome } else { 'Implement the synchronized codex handoff request.' }
     $acceptanceCriteria = if ($Request.PSObject.Properties['metadata_json'] -and $null -ne $Request.metadata_json -and $Request.metadata_json.PSObject.Properties['task_acceptance_criteria'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.metadata_json.task_acceptance_criteria)) { [string]$Request.metadata_json.task_acceptance_criteria } else { '' }
+    $taskType = if ($Request.PSObject.Properties['task_class'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.task_class)) { [string]$Request.task_class } elseif ($Request.PSObject.Properties['task_mode'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.task_mode)) { [string]$Request.task_mode } else { 'implementation' }
 
     $template = Get-Content -Path $templatePath -Raw
     $rendered = $template
@@ -14946,7 +15012,7 @@ function Write-CodexHandoffTaskPackage {
     $rendered = $rendered.Replace('{{OBJECTIVE_SUCCESS_CRITERIA}}', $acceptanceCriteria)
     $rendered = $rendered.Replace('{{TASK_ID}}', $taskId)
     $rendered = $rendered.Replace('{{TASK_TITLE}}', $taskTitle)
-    $rendered = $rendered.Replace('{{TASK_TYPE}}', 'programming')
+    $rendered = $rendered.Replace('{{TASK_TYPE}}', $taskType)
     $rendered = $rendered.Replace('{{TASK_SCOPE}}', $taskScope)
     $rendered = $rendered.Replace('{{TASK_DEPENDENCIES}}', '')
     $rendered = $rendered.Replace('{{TASK_ACCEPTANCE_CRITERIA}}', $acceptanceCriteria)
@@ -14978,6 +15044,10 @@ function Write-CodexHandoffTaskPackage {
         $directNewText = Get-TaskExplicitFieldValue -Task $Request -Names @('new_text', 'different_new_text', 'newText')
         $directValidationCommand = Get-TaskExplicitFieldValue -Task $Request -Names @('validation_command', 'validationCommand')
         $directTargetFile = if ($Request.PSObject.Properties['target_file']) { [string]$Request.target_file } else { '' }
+        $directValidationOnly = Test-ExplicitBooleanTrue -Value (Get-TaskExplicitFieldValue -Task $Request -Names @('validation_only', 'validationOnly'))
+        if ([string]::IsNullOrWhiteSpace([string]$directEditMode) -and $directValidationOnly) {
+            $directEditMode = 'validation_only'
+        }
         if (
             (-not [string]::IsNullOrWhiteSpace([string]$directEditMode)) -and
             (-not [string]::IsNullOrWhiteSpace([string]$directOldText)) -and
@@ -15002,6 +15072,20 @@ function Write-CodexHandoffTaskPackage {
                 $directBlock += ('Validation Command: {0}' -f [string]$directValidationCommand)
             }
             $rendered = ($rendered.TrimEnd() + "`n`n" + (($directBlock -join "`n").TrimEnd()) + "`n")
+        }
+        elseif (
+            $directValidationOnly -and
+            (-not [string]::IsNullOrWhiteSpace([string]$directValidationCommand))
+        ) {
+            $directValidationBlock = @(
+                '## Bounded Edit Materialization',
+                '',
+                'Materialization Status: materialized',
+                ('Target File: {0}' -f [string]$directTargetFile),
+                'Edit Mode: validation_only',
+                ('Validation Command: {0}' -f [string]$directValidationCommand)
+            )
+            $rendered = ($rendered.TrimEnd() + "`n`n" + (($directValidationBlock -join "`n").TrimEnd()) + "`n")
         }
     }
 
@@ -15613,7 +15697,10 @@ function Invoke-ExecuteChatTaskRequest {
     }
     else {
         $state = Load-State
-        $task = @($state.tasks | Where-Object { [string]$_.id -eq [string]$TaskId } | Select-Object -First 1)
+        $task = @($state.tasks | Where-Object {
+            [string]$_.id -eq [string]$TaskId -or
+            ($_.PSObject.Properties['remote_task_id'] -and [string]$_.remote_task_id -eq [string]$TaskId)
+        } | Select-Object -First 1)
     }
     if (@($task).Count -eq 0) {
         throw "Unable to locate chat task '$TaskId' after mirroring it into local state."
@@ -15622,9 +15709,14 @@ function Invoke-ExecuteChatTaskRequest {
     $resolvedAssignedExecutor = if (-not [string]::IsNullOrWhiteSpace($AssignedExecutor)) { [string]$AssignedExecutor } else { 'local' }
     $resolvedTaskCategory = if (-not [string]::IsNullOrWhiteSpace($TaskCategory)) { [string]$TaskCategory } else { 'chat_execution' }
     $applyBlockedStateBypass = [string]::Equals($resolvedTaskCategory, 'diagnostic_implementation_repair', [System.StringComparison]::OrdinalIgnoreCase)
+    $requestTaskClass = if ($requestIsReadOnlyMode) { [string]$resolvedTaskMode } else { 'implementation' }
     $task[0].assigned_executor = $resolvedAssignedExecutor
     $task[0].task_category = $resolvedTaskCategory
-    $task[0].type = 'implementation'
+    $task[0].type = $requestTaskClass
+    $task[0] | Add-Member -NotePropertyName task_mode -NotePropertyValue ([string]$resolvedTaskMode) -Force
+    $task[0] | Add-Member -NotePropertyName task_class -NotePropertyValue $requestTaskClass -Force
+    $task[0] | Add-Member -NotePropertyName bounded_edit_mode -NotePropertyValue ([bool]$requestRequiresBoundedEdit) -Force
+    $task[0] | Add-Member -NotePropertyName validation_only -NotePropertyValue ([bool]$requestIsValidationOnly) -Force
     $task[0] | Add-Member -NotePropertyName source -NotePropertyValue 'direct_chat' -Force
     $task[0].acceptance_criteria = [string[]](Split-List -Value $resolvedAcceptance)
     if (-not [string]::IsNullOrWhiteSpace($TargetFile)) {
@@ -15678,7 +15770,6 @@ function Invoke-ExecuteChatTaskRequest {
         reject_artifact_readback_only = $true
         reject_service_status_only = $true
     }
-    $requestTaskClass = if ($requestIsReadOnlyMode) { [string]$resolvedTaskMode } else { 'implementation' }
     $request | Add-Member -NotePropertyName task_class -NotePropertyValue $requestTaskClass -Force
     $request | Add-Member -NotePropertyName completion_gate -NotePropertyValue $completionGate -Force
     $request | Add-Member -NotePropertyName minimal_patch_plan -NotePropertyValue $implementationShape -Force
@@ -16313,67 +16404,79 @@ function Write-TodExecutionJsonAtomically {
     $backupPath = [System.IO.Path]::Combine($directory, ('.b' + [guid]::NewGuid().ToString('N').Substring(0, 6)))
     $json = $Payload | ConvertTo-Json -Depth 20
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-    try {
-        [System.IO.File]::WriteAllText($tempPath, $json, $utf8NoBom)
-        if (Test-Path -Path $Path) {
-            [System.IO.File]::Replace($tempPath, $Path, $backupPath, $true)
-            if (Test-Path -Path $backupPath) {
-                Remove-Item -Path $backupPath -Force -ErrorAction SilentlyContinue
-            }
-        }
-        else {
-            Move-Item -Path $tempPath -Destination $Path -Force
-        }
-    }
-    catch [System.IO.PathTooLongException] {
-        [System.IO.File]::WriteAllText((Get-LongFileSystemPath -PathValue $Path), $json, $utf8NoBom)
-    }
-    catch [System.UnauthorizedAccessException] {
+    $maxWriteAttempts = 6
+    for ($writeAttempt = 1; $writeAttempt -le $maxWriteAttempts; $writeAttempt++) {
         try {
-            [System.IO.File]::WriteAllText($Path, $json, $utf8NoBom)
+            [System.IO.File]::WriteAllText($tempPath, $json, $utf8NoBom)
+            if (Test-Path -Path $Path) {
+                [System.IO.File]::Replace($tempPath, $Path, $backupPath, $true)
+                if (Test-Path -Path $backupPath) {
+                    Remove-Item -Path $backupPath -Force -ErrorAction SilentlyContinue
+                }
+            }
+            else {
+                Move-Item -Path $tempPath -Destination $Path -Force
+            }
+            break
+        }
+        catch [System.IO.PathTooLongException] {
+            [System.IO.File]::WriteAllText((Get-LongFileSystemPath -PathValue $Path), $json, $utf8NoBom)
+            break
         }
         catch [System.UnauthorizedAccessException] {
-            $fullTargetPath = [System.IO.Path]::GetFullPath($Path)
-            if (($fullTargetPath -match '[\\/]runtime[\\/]shared[\\/]') -or ($fullTargetPath -match '[\\/]tmp_remote_mim[\\/]runtime[\\/]shared[\\/]')) {
-                Write-TodSharedArtifactWriteFailureRecord -TargetPath $Path -ReasonCode 'shared_artifact_write_unauthorized' -ErrorMessage ([string]$_.Exception.Message) -Payload $Payload | Out-Null
-            }
-            throw
-        }
-    }
-    catch {
-        $inner = $_.Exception.InnerException
-        if ($inner -is [System.UnauthorizedAccessException]) {
             try {
                 [System.IO.File]::WriteAllText($Path, $json, $utf8NoBom)
             }
-            catch {
-                $fallbackInner = $_.Exception.InnerException
-                if (($_.Exception -is [System.UnauthorizedAccessException]) -or ($fallbackInner -is [System.UnauthorizedAccessException])) {
-                    $fullTargetPath = [System.IO.Path]::GetFullPath($Path)
-                    if (($fullTargetPath -match '[\\/]runtime[\\/]shared[\\/]') -or ($fullTargetPath -match '[\\/]tmp_remote_mim[\\/]runtime[\\/]shared[\\/]')) {
-                        Write-TodSharedArtifactWriteFailureRecord -TargetPath $Path -ReasonCode 'shared_artifact_write_unauthorized' -ErrorMessage ([string]$_.Exception.Message) -Payload $Payload | Out-Null
-                    }
-                    throw
+            catch [System.UnauthorizedAccessException] {
+                $fullTargetPath = [System.IO.Path]::GetFullPath($Path)
+                if (($fullTargetPath -match '[\\/]runtime[\\/]shared[\\/]') -or ($fullTargetPath -match '[\\/]tmp_remote_mim[\\/]runtime[\\/]shared[\\/]')) {
+                    Write-TodSharedArtifactWriteFailureRecord -TargetPath $Path -ReasonCode 'shared_artifact_write_unauthorized' -ErrorMessage ([string]$_.Exception.Message) -Payload $Payload | Out-Null
                 }
-                else {
-                    throw
-                }
+                throw
             }
+            break
         }
-        elseif ($_.Exception -is [System.IO.PathTooLongException] -or $inner -is [System.IO.PathTooLongException]) {
-            [System.IO.File]::WriteAllText((Get-LongFileSystemPath -PathValue $Path), $json, $utf8NoBom)
-        }
-        else {
+        catch {
+            $inner = $_.Exception.InnerException
+            $isTransientIoLock = (
+                $_.Exception -is [System.IO.IOException] -or
+                $inner -is [System.IO.IOException]
+            )
+            if ($isTransientIoLock -and $writeAttempt -lt $maxWriteAttempts) {
+                Start-Sleep -Milliseconds (75 * $writeAttempt)
+                continue
+            }
+            if ($inner -is [System.UnauthorizedAccessException]) {
+                try {
+                    [System.IO.File]::WriteAllText($Path, $json, $utf8NoBom)
+                }
+                catch {
+                    $fallbackInner = $_.Exception.InnerException
+                    if (($_.Exception -is [System.UnauthorizedAccessException]) -or ($fallbackInner -is [System.UnauthorizedAccessException])) {
+                        $fullTargetPath = [System.IO.Path]::GetFullPath($Path)
+                        if (($fullTargetPath -match '[\\/]runtime[\\/]shared[\\/]') -or ($fullTargetPath -match '[\\/]tmp_remote_mim[\\/]runtime[\\/]shared[\\/]')) {
+                            Write-TodSharedArtifactWriteFailureRecord -TargetPath $Path -ReasonCode 'shared_artifact_write_unauthorized' -ErrorMessage ([string]$_.Exception.Message) -Payload $Payload | Out-Null
+                        }
+                        throw
+                    }
+                    else {
+                        throw
+                    }
+                }
+                break
+            }
+            elseif ($_.Exception -is [System.IO.PathTooLongException] -or $inner -is [System.IO.PathTooLongException]) {
+                [System.IO.File]::WriteAllText((Get-LongFileSystemPath -PathValue $Path), $json, $utf8NoBom)
+                break
+            }
             throw
         }
     }
-    finally {
-        if (Test-Path -Path $tempPath) {
-            Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue
-        }
-        if (Test-Path -Path $backupPath) {
-            Remove-Item -Path $backupPath -Force -ErrorAction SilentlyContinue
-        }
+    if (Test-Path -Path $tempPath) {
+        Remove-Item -Path $tempPath -Force -ErrorAction SilentlyContinue
+    }
+    if (Test-Path -Path $backupPath) {
+        Remove-Item -Path $backupPath -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -16902,13 +17005,24 @@ function Test-TodCanonicalActiveLaneGate {
     }
 
     $taskMode = Resolve-TodTaskMode -Task $taskForMaterialization
+    $validationOnly = Test-ExplicitBooleanTrue -Value (Get-TaskExplicitFieldValue -Task $taskForMaterialization -Names @('validation_only', 'validationOnly'))
+    $validationCommandForTaskMode = Get-TaskExplicitFieldValue -Task $taskForMaterialization -Names @('validation_command', 'validationCommand')
+    if ([string]::IsNullOrWhiteSpace([string]$validationCommandForTaskMode)) {
+        $validationCommandForTaskMode = Get-BoundedEditDirectiveValue -Text (Get-TaskRoutingText -Task $taskForMaterialization) -FieldName 'Validation Command'
+    }
+    $isValidationTaskMode = [string]::Equals([string]$taskMode, 'validation', [System.StringComparison]::OrdinalIgnoreCase)
+    if (($isValidationTaskMode -or $validationOnly) -and [string]::IsNullOrWhiteSpace([string]$validationCommandForTaskMode)) {
+        return (New-TodCanonicalActiveLaneGateRejection -Item $Item -ReasonCode 'malformed_validation_packet' -MissingFields @('validation_command') -Reason 'Validation-only work is missing a validation_command before active-lane promotion.' -PromotionDecision $PromotionDecision -PromotionReason $PromotionReason)
+    }
     if (Test-TodReadOnlyTaskMode -TaskMode $taskMode) {
+        $isTargetSelectionTaskMode = [string]::Equals([string]$taskMode, 'target_selection', [System.StringComparison]::OrdinalIgnoreCase)
+        $readOnlyExpectedEvidence = if ($isValidationTaskMode -or $validationOnly) { @('validation_result', 'command_evidence') } elseif ($isTargetSelectionTaskMode) { @('target_selection_artifact', 'inspected_candidates', 'validation_plan') } else { @('assessment_artifact', 'validation_result') }
         $accepted = [pscustomobject]@{
             generated_at = Get-UtcNow
             packet_type = 'tod-canonical-active-lane-gate-v1'
             status = 'accepted_for_active_lane'
             accepted = $true
-            reason_code = 'canonical_read_only_task_mode_valid'
+            reason_code = if ($isValidationTaskMode -or $validationOnly) { 'canonical_validation_task_mode_valid' } elseif ($isTargetSelectionTaskMode) { 'canonical_target_selection_task_mode_valid' } else { 'canonical_read_only_task_mode_valid' }
             active_lane_mutated = $false
             request_id = [string]$Item.request_id
             task_id = [string]$Item.task_id
@@ -16921,7 +17035,8 @@ function Test-TodCanonicalActiveLaneGate {
                 bounded_edit_mode = $false
                 target_file_required = $false
                 source_code_modification_allowed = $false
-                expected_evidence = @('assessment_artifact', 'validation_result')
+                validation_command = if ($isValidationTaskMode -or $validationOnly) { [string]$validationCommandForTaskMode } else { '' }
+                expected_evidence = @($readOnlyExpectedEvidence)
             }
             materialization = $null
         }
@@ -16930,7 +17045,6 @@ function Test-TodCanonicalActiveLaneGate {
     }
 
     $boundedEditMode = Test-ExplicitBooleanTrue -Value (Get-TaskExplicitFieldValue -Task $taskForMaterialization -Names @('bounded_edit_mode', 'boundedEditMode'))
-    $validationOnly = Test-ExplicitBooleanTrue -Value (Get-TaskExplicitFieldValue -Task $taskForMaterialization -Names @('validation_only', 'validationOnly'))
     if (-not $boundedEditMode) {
         $accepted = [pscustomobject]@{
             generated_at = Get-UtcNow
@@ -18128,11 +18242,24 @@ function Merge-TodActivityStreamPayload {
     $latestEvent = @($mergedEvents | Select-Object -Last 1)
     $latestEvent = if (@($latestEvent).Count -gt 0) { $latestEvent[0] } else { $null }
     $summary = if (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.summary)) { [string]$incomingStream.summary } elseif ($existingStream) { [string]$existingStream.summary } elseif ($latestEvent) { [string]$latestEvent.message } else { '' }
-    $objectiveId = if ($latestEvent -and -not [string]::IsNullOrWhiteSpace([string]$latestEvent.objective_id)) { [string]$latestEvent.objective_id } elseif (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.objective_id)) { [string]$incomingStream.objective_id } elseif ($existingStream) { [string]$existingStream.objective_id } else { '' }
-    $taskId = if ($latestEvent -and -not [string]::IsNullOrWhiteSpace([string]$latestEvent.task_id)) { [string]$latestEvent.task_id } elseif (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.task_id)) { [string]$incomingStream.task_id } elseif ($existingStream) { [string]$existingStream.task_id } else { '' }
-    $requestId = if ($latestEvent -and -not [string]::IsNullOrWhiteSpace([string]$latestEvent.request_id)) { [string]$latestEvent.request_id } elseif (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.request_id)) { [string]$incomingStream.request_id } elseif ($existingStream) { [string]$existingStream.request_id } else { '' }
-    $executionId = if ($latestEvent -and -not [string]::IsNullOrWhiteSpace([string]$latestEvent.execution_id)) { [string]$latestEvent.execution_id } elseif (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.execution_id)) { [string]$incomingStream.execution_id } elseif ($existingStream) { [string]$existingStream.execution_id } else { '' }
-    $correlationId = if ($latestEvent -and -not [string]::IsNullOrWhiteSpace([string]$latestEvent.correlation_id)) { [string]$latestEvent.correlation_id } elseif (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.correlation_id)) { [string]$incomingStream.correlation_id } elseif ($existingStream) { [string]$existingStream.correlation_id } else { '' }
+    $incomingHasIdentity = (
+        -not [string]::IsNullOrWhiteSpace([string]$incomingStream.objective_id) -or
+        -not [string]::IsNullOrWhiteSpace([string]$incomingStream.task_id) -or
+        -not [string]::IsNullOrWhiteSpace([string]$incomingStream.request_id) -or
+        -not [string]::IsNullOrWhiteSpace([string]$incomingStream.execution_id)
+    )
+    $latestEventBelongsToIncoming = (
+        $latestEvent -and (
+            (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.task_id) -and [string]$latestEvent.task_id -eq [string]$incomingStream.task_id) -or
+            (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.request_id) -and [string]$latestEvent.request_id -eq [string]$incomingStream.request_id) -or
+            (-not [string]::IsNullOrWhiteSpace([string]$incomingStream.execution_id) -and [string]$latestEvent.execution_id -eq [string]$incomingStream.execution_id)
+        )
+    )
+    $objectiveId = if ($incomingHasIdentity -and -not [string]::IsNullOrWhiteSpace([string]$incomingStream.objective_id)) { [string]$incomingStream.objective_id } elseif ($latestEventBelongsToIncoming -and -not [string]::IsNullOrWhiteSpace([string]$latestEvent.objective_id)) { [string]$latestEvent.objective_id } elseif ($existingStream) { [string]$existingStream.objective_id } else { '' }
+    $taskId = if ($incomingHasIdentity -and -not [string]::IsNullOrWhiteSpace([string]$incomingStream.task_id)) { [string]$incomingStream.task_id } elseif ($latestEventBelongsToIncoming -and -not [string]::IsNullOrWhiteSpace([string]$latestEvent.task_id)) { [string]$latestEvent.task_id } elseif ($existingStream) { [string]$existingStream.task_id } else { '' }
+    $requestId = if ($incomingHasIdentity -and -not [string]::IsNullOrWhiteSpace([string]$incomingStream.request_id)) { [string]$incomingStream.request_id } elseif ($latestEventBelongsToIncoming -and -not [string]::IsNullOrWhiteSpace([string]$latestEvent.request_id)) { [string]$latestEvent.request_id } elseif ($existingStream) { [string]$existingStream.request_id } else { '' }
+    $executionId = if ($incomingHasIdentity -and -not [string]::IsNullOrWhiteSpace([string]$incomingStream.execution_id)) { [string]$incomingStream.execution_id } elseif ($latestEventBelongsToIncoming -and -not [string]::IsNullOrWhiteSpace([string]$latestEvent.execution_id)) { [string]$latestEvent.execution_id } elseif ($existingStream) { [string]$existingStream.execution_id } else { '' }
+    $correlationId = if ($incomingHasIdentity -and -not [string]::IsNullOrWhiteSpace([string]$incomingStream.correlation_id)) { [string]$incomingStream.correlation_id } elseif ($latestEventBelongsToIncoming -and -not [string]::IsNullOrWhiteSpace([string]$latestEvent.correlation_id)) { [string]$latestEvent.correlation_id } elseif ($existingStream) { [string]$existingStream.correlation_id } else { '' }
 
     return [ordered]@{
         generated_at = if ($existingStream -and -not [string]::IsNullOrWhiteSpace([string]$existingStream.generated_at)) { [string]$existingStream.generated_at } else { [string]$incomingStream.generated_at }
@@ -18558,6 +18685,8 @@ function Resolve-LocalExecutionTaskClass {
             'capability_assessment' { return 'read_only_assessment' }
             'assessment' { return 'read_only_assessment' }
             'inspection_only' { return 'inspection_only' }
+            'validation' { return 'validation_only' }
+            'validation_only' { return 'validation_only' }
             'report_only' { return 'report_only' }
             'diagnostic_only' { return 'diagnostic_only' }
             'inventory_only' { return 'inventory_only' }
@@ -18590,7 +18719,7 @@ function Test-LocalExecutionPatchRequired {
     )
 
     $resolvedTaskClass = if ([string]::IsNullOrWhiteSpace($TaskClass)) { Resolve-LocalExecutionTaskClass -Task $Task } else { [string]$TaskClass }
-    if (@('read_only_assessment', 'inspection_only', 'report_only', 'diagnostic_only', 'inventory_only') -contains $resolvedTaskClass) {
+    if (@('read_only_assessment', 'inspection_only', 'report_only', 'diagnostic_only', 'inventory_only', 'validation_only') -contains $resolvedTaskClass) {
         return $false
     }
 

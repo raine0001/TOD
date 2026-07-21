@@ -109,6 +109,7 @@ Describe 'TOD bounded edit materialization' {
         Import-TodFunction -Name 'Get-TaskExplicitFieldValue'
         Import-TodFunction -Name 'Test-ExplicitBooleanTrue'
         Import-TodFunction -Name 'Resolve-TaskCategory'
+        Import-TodFunction -Name 'Resolve-TodTaskMode'
         Import-TodFunction -Name 'Get-BoundedEditDirectiveValue'
         Import-TodFunction -Name 'Convert-ToCanonicalBoundedEditMode'
         Import-TodFunction -Name 'Get-BoundedEditSectionTitle'
@@ -154,6 +155,38 @@ No code changes.
         }
 
         Test-TaskAllowsLocalExecutionWithoutMaterialization -Task $task -TaskCategory 'source_anchor_observation' | Should Be $true
+    }
+
+    It 'treats target-selection training as local observe-only work until a bounded edit target exists' {
+        $task = [pscustomobject]@{
+            id = 'TSK-TARGET-SELECTION-RUNG'
+            title = 'TOD target selection mode rung'
+            task_category = 'training'
+            type = 'implementation'
+            scope = @'
+TOD must independently select one fresh harmless status or UI target.
+Inspect candidate files, reject unsuitable candidates, choose one target, and publish a target-selection artifact.
+Do not modify source code in this rung.
+'@
+        }
+
+        Resolve-TodTaskMode -Task $task | Should Be 'target_selection'
+        Test-TaskAllowsLocalExecutionWithoutMaterialization -Task $task -TaskCategory 'training' | Should Be $true
+
+        $boundedTask = [pscustomobject]@{
+            id = 'TSK-TARGET-SELECTION-WITH-EDIT'
+            title = 'TOD target selection after packet formation'
+            task_category = 'training'
+            scope = @'
+Target selection is complete.
+Target File: scripts/TOD.ps1
+Edit Mode: replace_text
+Old Text: alpha
+New Text: beta
+'@
+        }
+
+        Test-TaskAllowsLocalExecutionWithoutMaterialization -Task $boundedTask -TaskCategory 'training' | Should Be $false
     }
 
     It 'allows report-only read-only audit tasks with stale blocked materialization to reach LocalExecutionEngine' {
