@@ -1859,7 +1859,9 @@ def _studio_mim_body() -> str:
           const tools = button.closest('.mim-message-tools');
           const index = Number(tools && tools.dataset ? tools.dataset.messageIndex : -1);
           const message = messages[index] || {{}};
-          const text = String(message.text || '').trim();
+          const bubble = button.closest('.mim-message');
+          const visibleText = bubble && bubble.querySelector ? bubble.querySelector('.mim-message-text')?.textContent : '';
+          const text = String(message.text || visibleText || '').trim();
           const tool = String(button.dataset.tool || '');
           if (tool === 'copy') {{
             navigator.clipboard?.writeText(text);
