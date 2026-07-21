@@ -45,6 +45,28 @@ Progression rule: one successful independent demonstration can advance a capabil
 
 ## Active Entries
 
+### APP-TOD-031: Fresh Target Packet Loop Materialization
+
+Borrowed From: Codex control-plane repair and coaching.
+
+Reason: TOD needed to prove it could inspect a fresh target, synthesize a bounded packet, apply it, validate it, and clean it up. The first fresh packet attempt produced a precise blocker because exact source-anchor text was missing, and the control plane needed packet-formation artifact and shared-artifact write retry repairs before the loop could move reliably.
+
+Incident: `TOD-INDEPENDENT-FRESH-TARGET-PACKET-LOOP-20260721`
+
+Capability: TOD must independently convert current-code evidence into a bounded packet loop: target selection, source-anchor observation, packet synthesis, local apply, validation, cleanup, and durable evidence with no wrapper-only completion.
+
+Current Apprentice: TOD
+
+Progress: `scaffolded_pass`; TOD published a source-anchor observation for `tmp_remote_mim/core/routers/public_chat.py`, synthesized `TOD_INDEPENDENT_FRESH_PUBLIC_CHAT_PACKET.latest.json`, applied the harmless packet through the local executor, and cleaned it up through an exact bounded edit after reverse-packet cleanup blocked. Codex repaired `scripts/TOD.ps1` packet-formation artifact materialization and shared-artifact write retry handling first, so this is not an independent demonstration.
+
+Proficiency: `guided`; TOD can perform the loop with supplied target/anchor scaffolding and a repaired control plane.
+
+Independent Demonstration: `pending`; TOD must select a fresh harmless target and run the full inspect -> source anchor -> packet -> apply -> validate -> cleanup loop without Codex providing anchor directives or patching the control plane.
+
+Freeze: partial; scaffolded capability evidence is recorded in `docs/training/learned-capabilities/TOD_FRESH_TARGET_PACKET_LOOP_SCAFFOLDED_CAPABILITY.md`.
+
+Retirement: open.
+
 ### APP-TOD-024: Research Observatory Conversation Evolution Routing
 
 Borrowed From: Codex emergency repair.

@@ -7472,15 +7472,34 @@ function Resolve-TaskBoundedEditMaterialization {
         @($userAppHeroMediaTargets).Count -eq 1 -and
         ($lowerText -match 'hero|media|image|background|mobile|visual')
     )
+    $normalizedArtifactTarget = if (-not [string]::IsNullOrWhiteSpace($targetFile)) {
+        ([string]$targetFile).ToLowerInvariant().Replace('\', '/')
+    }
+    else {
+        ''
+    }
+    $packetFormationArtifactTask = (
+        ([string]$taskCategory).ToLowerInvariant() -eq 'packet_formation' -and
+        (-not [string]::IsNullOrWhiteSpace($normalizedArtifactTarget)) -and
+        $normalizedArtifactTarget.EndsWith('.json') -and
+        (
+            $normalizedArtifactTarget.StartsWith('runtime_remote_training/tod_result_artifacts/') -or
+            $normalizedArtifactTarget.StartsWith('runtime_remote_training/tod_independent_resolution_attempts/')
+        ) -and
+        (-not [string]::IsNullOrWhiteSpace($packetSourceTarget))
+    )
     $artifactWriteTask = (
         (-not [string]::IsNullOrWhiteSpace($targetFile)) -and
-        $targetFile.ToLowerInvariant().EndsWith('.json') -and
+        $normalizedArtifactTarget.EndsWith('.json') -and
         (
-            $targetFile.ToLowerInvariant().StartsWith('runtime_remote_training/tod_result_artifacts/') -or
-            $targetFile.ToLowerInvariant().StartsWith('runtime_remote_training/tod_independent_resolution_attempts/') -or
+            $normalizedArtifactTarget.StartsWith('runtime_remote_training/tod_result_artifacts/') -or
+            $normalizedArtifactTarget.StartsWith('runtime_remote_training/tod_independent_resolution_attempts/') -or
             [string]::Equals($targetFile, 'runtime_remote_training/TOD_CORRECTED_PATCH_SYNTHESIS_PRACTICE_V1.latest.json', [System.StringComparison]::OrdinalIgnoreCase)
         ) -and
-        ($lowerText -match 'produce a result artifact|fill(?:s)? these required_output|artifact_write|practice artifact|write.*artifact')
+        (
+            $packetFormationArtifactTask -or
+            ($lowerText -match 'produce a result artifact|fill(?:s)? these required_output|artifact_write|practice artifact|write.*artifact')
+        )
     )
 
     if ([string]::IsNullOrWhiteSpace($engineMode)) {
@@ -7923,6 +7942,21 @@ function Test-TaskAllowsLocalExecutionWithoutMaterialization {
             return $false
         }
         return $true
+    }
+
+    if (@($modeOrCategory | Where-Object { $_ -in @('read_only_assessment', 'report_only', 'diagnostic_only', 'inspection_only', 'inspection', 'review_only', 'source_anchor_observation') }).Count -gt 0) {
+        $taskTextForReadOnly = if (Get-Command -Name Get-TaskRoutingText -ErrorAction SilentlyContinue) {
+            Get-TaskRoutingText -Task $Task
+        }
+        else {
+            ''
+        }
+        $hasExplicitBoundedEditDirectives = (
+            $taskTextForReadOnly -match '(?im)^\s*(Edit Mode|Old Text|New Text|Anchor|Snippet|Json Field|Json Value)\s*:'
+        )
+        if (-not $hasExplicitBoundedEditDirectives) {
+            return $true
+        }
     }
 
     if (@('read_only_assessment', 'report_only', 'diagnostic_only', 'inspection_only', 'inspection', 'review_only', 'source_anchor_observation', 'validation', 'validation_only') -contains $category) {
@@ -16404,7 +16438,12 @@ function Write-TodExecutionJsonAtomically {
     $backupPath = [System.IO.Path]::Combine($directory, ('.b' + [guid]::NewGuid().ToString('N').Substring(0, 6)))
     $json = $Payload | ConvertTo-Json -Depth 20
     $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
-    $maxWriteAttempts = 6
+    $fullTargetPathForRetries = [System.IO.Path]::GetFullPath($Path)
+    $isSharedExecutionArtifactPath = (
+        ($fullTargetPathForRetries -match '[\\/]runtime[\\/]shared[\\/]') -or
+        ($fullTargetPathForRetries -match '[\\/]tmp_remote_mim[\\/]runtime[\\/]shared[\\/]')
+    )
+    $maxWriteAttempts = if ($isSharedExecutionArtifactPath) { 30 } else { 6 }
     for ($writeAttempt = 1; $writeAttempt -le $maxWriteAttempts; $writeAttempt++) {
         try {
             [System.IO.File]::WriteAllText($tempPath, $json, $utf8NoBom)
@@ -16424,12 +16463,24 @@ function Write-TodExecutionJsonAtomically {
             break
         }
         catch [System.UnauthorizedAccessException] {
+            if ($isSharedExecutionArtifactPath -and $writeAttempt -lt $maxWriteAttempts) {
+                Start-Sleep -Milliseconds (100 * $writeAttempt)
+                continue
+            }
             try {
                 [System.IO.File]::WriteAllText($Path, $json, $utf8NoBom)
             }
-            catch [System.UnauthorizedAccessException] {
-                $fullTargetPath = [System.IO.Path]::GetFullPath($Path)
-                if (($fullTargetPath -match '[\\/]runtime[\\/]shared[\\/]') -or ($fullTargetPath -match '[\\/]tmp_remote_mim[\\/]runtime[\\/]shared[\\/]')) {
+            catch {
+                $fallbackInner = $_.Exception.InnerException
+                $fallbackIsTransientIoLock = (
+                    $_.Exception -is [System.IO.IOException] -or
+                    $fallbackInner -is [System.IO.IOException]
+                )
+                if ($isSharedExecutionArtifactPath -and $fallbackIsTransientIoLock -and $writeAttempt -lt $maxWriteAttempts) {
+                    Start-Sleep -Milliseconds (100 * $writeAttempt)
+                    continue
+                }
+                if (($_.Exception -is [System.UnauthorizedAccessException]) -or ($fallbackInner -is [System.UnauthorizedAccessException])) {
                     Write-TodSharedArtifactWriteFailureRecord -TargetPath $Path -ReasonCode 'shared_artifact_write_unauthorized' -ErrorMessage ([string]$_.Exception.Message) -Payload $Payload | Out-Null
                 }
                 throw

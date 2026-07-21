@@ -474,7 +474,8 @@ Validation Command: .\.venv\Scripts\python.exe -m py_compile tmp_remote_mim\core
 Validation Pattern: py_compile pass
 Required output: synthesize one bounded implementation packet or publish a precise blocker.
 "@
-            $packetFormation = (& $todScript -Action execute-chat-task -ConfigPath $fixture.ConfigPath -StatePath $fixture.StatePath -ObjectiveId 'ENT-001-ENTERPRISE-DATABASE-FOUNDATION-V1' -TaskId 'TSK-ENT-001-MODEL-PACKET-TEST' -RequestId 'REQ-ENT-001-MODEL-PACKET-TEST' -CorrelationId 'CORR-ENT-001-MODEL-PACKET-TEST' -Title 'Form ENT-001 model packet' -Description 'Packet formation should reach active lane without pre-supplying New Text.' -Scope $packetScope -AcceptanceCriteria 'Packet formation can synthesize or block inside executor.' -SuccessCriteria 'Gate accepts packet formation artifact-write request.' -AssignedExecutor local -TaskCategory packet_formation -ExecutionMode async | Out-String | ConvertFrom-Json)
+            $packetRunId = [guid]::NewGuid().ToString('N')
+            $packetFormation = (& $todScript -Action execute-chat-task -ConfigPath $fixture.ConfigPath -StatePath $fixture.StatePath -ObjectiveId 'ENT-001-ENTERPRISE-DATABASE-FOUNDATION-V1' -TaskId "TSK-ENT-001-MODEL-PACKET-TEST-$packetRunId" -RequestId "REQ-ENT-001-MODEL-PACKET-TEST-$packetRunId" -CorrelationId "CORR-ENT-001-MODEL-PACKET-TEST-$packetRunId" -Title 'Form ENT-001 model packet' -Description 'Packet formation should reach active lane without pre-supplying New Text.' -Scope $packetScope -AcceptanceCriteria 'Packet formation can synthesize or block inside executor.' -SuccessCriteria 'Gate accepts packet formation artifact-write request.' -AssignedExecutor local -TaskCategory packet_formation -ExecutionMode async | Out-String | ConvertFrom-Json)
 
             [string]$packetFormation.intake_arbitration.decision | Should Be 'run_now'
             [string]$packetFormation.intake_arbitration.pre_active_lane_gate.reason_code | Should Be 'canonical_bounded_edit_packet_valid'
@@ -487,7 +488,8 @@ Edit Mode: artifact_write
 Target File: runtime_remote_training/tod_independent_resolution_attempts/NORMAL_ARTIFACT_WRITE_TEST.latest.json
 Validation Command: Select-String -Path runtime_remote_training/tod_independent_resolution_attempts/NORMAL_ARTIFACT_WRITE_TEST.latest.json -SimpleMatch ready
 "@
-            $normalArtifactWrite = (& $todScript -Action execute-chat-task -ConfigPath $fixture.ConfigPath -StatePath $fixture.StatePath -ObjectiveId 'objective-normal-artifact-write' -TaskId 'TSK-NORMAL-ARTIFACT-WRITE' -RequestId 'REQ-NORMAL-ARTIFACT-WRITE' -CorrelationId 'CORR-NORMAL-ARTIFACT-WRITE' -Title 'Normal artifact write missing body' -Description 'Normal artifact writes still require New Text.' -Scope $normalScope -AcceptanceCriteria 'Must reject missing artifact body.' -SuccessCriteria 'Must reject missing artifact body.' -AssignedExecutor local -TaskCategory code_change -ExecutionMode async | Out-String | ConvertFrom-Json)
+            $normalRunId = [guid]::NewGuid().ToString('N')
+            $normalArtifactWrite = (& $todScript -Action execute-chat-task -ConfigPath $fixture.ConfigPath -StatePath $fixture.StatePath -ObjectiveId 'objective-normal-artifact-write' -TaskId "TSK-NORMAL-ARTIFACT-WRITE-$normalRunId" -RequestId "REQ-NORMAL-ARTIFACT-WRITE-$normalRunId" -CorrelationId "CORR-NORMAL-ARTIFACT-WRITE-$normalRunId" -Title 'Normal artifact write missing body' -Description 'Normal artifact writes still require New Text.' -Scope $normalScope -AcceptanceCriteria 'Must reject missing artifact body.' -SuccessCriteria 'Must reject missing artifact body.' -AssignedExecutor local -TaskCategory code_change -ExecutionMode async | Out-String | ConvertFrom-Json)
 
             [string]$normalArtifactWrite.intake_arbitration.decision | Should Be 'rejected_before_active_lane'
             [string]$normalArtifactWrite.intake_arbitration.pre_active_lane_gate.reason_code | Should Be 'malformed_bounded_edit_packet'

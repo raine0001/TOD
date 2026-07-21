@@ -670,6 +670,53 @@ Do not modify scripts/generate_mim_tod_training_scoreboard.py in this practice t
         [string]$materialization.prompt_directives['Edit Mode'] | Should Be 'artifact_write'
     }
 
+    It 'materializes packet formation artifact output without explicit artifact wording' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-PACKET-FORMATION-ARTIFACT'
+            title = 'Materialize packet artifact'
+            task_category = 'packet_formation'
+            target_file = 'runtime_remote_training/tod_independent_resolution_attempts/TOD_PACKET.latest.json'
+            scope = @'
+Packet Source Target: tmp_remote_mim/core/routers/public_chat.py
+Inspect current code and synthesize one harmless bounded edit packet with exact current anchor_or_old_text, new_text_or_snippet, validation_command, expected_evidence, closure_evidence, prevention_lesson, and dave_needed=no.
+Do not apply the packet in this rung.
+'@
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'materialized'
+        [string]$materialization.edit_mode | Should Be 'artifact_write'
+        [string]@($materialization.target_files)[0] | Should Be 'runtime_remote_training/tod_independent_resolution_attempts/TOD_PACKET.latest.json'
+        [string]$materialization.prompt_directives['Edit Mode'] | Should Be 'artifact_write'
+        [string]$materialization.prompt_directives['Packet Source Target'] | Should Be 'tmp_remote_mim/core/routers/public_chat.py'
+    }
+
+    It 'allows read-only assessment tasks that mention multiple files without turning them into bounded edits' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-READONLY-MULTIFILE'
+            title = 'Assess packet formation blocker'
+            task_category = 'read_only_assessment'
+            task_mode = 'read_only_assessment'
+            scope = @'
+Read-only assessment. Inspect the latest blocked result and the relevant materialization code path.
+Compare runtime_remote_training/tod_independent_resolution_attempts/TOD_PACKET.latest.json with tmp_remote_mim/core/routers/public_chat.py.
+Do not modify source.
+'@
+        }
+        $materialization = [pscustomobject]@{
+            status = 'blocked'
+            reason_code = 'blocked_missing_bounded_edit_mode'
+            target_file_candidates = @(
+                'runtime_remote_training/tod_independent_resolution_attempts/TOD_PACKET.latest.json',
+                'tmp_remote_mim/core/routers/public_chat.py'
+            )
+        }
+
+        Resolve-TodTaskMode -Task $task | Should Be 'read_only_assessment'
+        Test-TaskAllowsLocalExecutionWithoutMaterialization -Task $task -TaskCategory 'read_only_assessment' -TaskMaterialization $materialization | Should Be $true
+    }
+
     It 'blocks abstract code changes with blocked_missing_bounded_edit_mode' {
         $task = [pscustomobject]@{
             id = 'TSK-MAT-BLOCKED'
