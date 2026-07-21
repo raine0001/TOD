@@ -1117,6 +1117,7 @@ def _studio_mim_request_focus_state() -> dict[str, Any]:
         "label": "MIM request",
         "objective_id": objective_id,
         "task_id": task_id,
+        "request_id": _first_text(request.get("request_id"), task_id, default=""),
         "updated_at": _first_text(request.get("generated_at"), request.get("updated_at"), default=""),
         "summary": summary,
         "current_action": _first_text(request.get("tod_action"), default="MIM dispatched work toward TOD."),
@@ -1126,6 +1127,96 @@ def _studio_mim_request_focus_state() -> dict[str, Any]:
             else summary
         ),
         "source": "MIM_TOD_TASK_REQUEST.latest.json",
+    }
+
+
+def _phase_bar(label: str, percent: int, state: str, detail: str = "") -> dict[str, Any]:
+    return {
+        "label": label,
+        "percent": max(0, min(100, int(percent or 0))),
+        "state": str(state or "pending").strip().lower() or "pending",
+        "detail": str(detail or "").strip(),
+    }
+
+
+def _studio_mim_objective_lifecycle(live: dict[str, Any]) -> dict[str, Any]:
+    state = str(live.get("state") or "idle").strip().lower()
+    source = str(live.get("event") or live.get("source") or "").strip().lower()
+    objective_id = _first_text(live.get("objective_id"), default="No active objective")
+    task_id = _first_text(live.get("task_id"), default="")
+    summary = _first_text(live.get("summary"), live.get("plain_meaning"), default="No current objective summary is published.")
+    status_label = _first_text(live.get("label"), live.get("status"), default="Ready")
+    current_phase = "Understanding"
+    if state == "complete":
+        current_phase = "Reflection"
+    elif state == "waiting":
+        current_phase = "Validation"
+    elif "task_request" in source or "request" in source:
+        current_phase = "Planning"
+    elif state == "working":
+        current_phase = "Execution"
+
+    has_objective = bool(str(live.get("objective_id") or "").strip())
+    if not has_objective:
+        phases = [
+            _phase_bar("Understanding", 10, "active", "Waiting for an objective-bearing conversation, request, or execution artifact."),
+            _phase_bar("Planning", 0, "pending"),
+            _phase_bar("Execution", 0, "pending"),
+            _phase_bar("Validation", 0, "pending"),
+            _phase_bar("Reflection", 0, "pending"),
+            _phase_bar("Learning", 0, "pending"),
+        ]
+        overall = 5
+    elif state == "complete":
+        phases = [
+            _phase_bar("Understanding", 100, "done", "Objective identity is visible."),
+            _phase_bar("Planning", 100, "done", "A bounded task or terminal result is published."),
+            _phase_bar("Execution", 100, "done", "Execution result reached a terminal state."),
+            _phase_bar("Validation", 100, "done", "Latest terminal evidence is visible."),
+            _phase_bar("Reflection", 45, "active", "MIM should turn the result into operator-facing learning and next-step truth."),
+            _phase_bar("Learning", 20, "pending", "Waiting for durable learned behavior or capability evidence."),
+        ]
+        overall = 78
+    elif state == "waiting":
+        phases = [
+            _phase_bar("Understanding", 100, "done", "Objective identity is visible."),
+            _phase_bar("Planning", 80, "done", "MIM has enough context to name the current blocker or dependency."),
+            _phase_bar("Execution", 45, "blocked", "Execution is not moving until the blocker changes."),
+            _phase_bar("Validation", 30, "active", "The next proof should distinguish stale status, blocker evidence, and live execution."),
+            _phase_bar("Reflection", 10, "pending", "Reflection waits for fresh proof or a smaller valid next step."),
+            _phase_bar("Learning", 0, "pending"),
+        ]
+        overall = 44
+    else:
+        phases = [
+            _phase_bar("Understanding", 100, "done", "Objective identity is visible."),
+            _phase_bar("Planning", 70 if task_id else 45, "active" if not task_id else "done", "MIM is resolving the current objective into a task, dependency, or evidence target."),
+            _phase_bar("Execution", 55 if task_id else 25, "active", "Live work is visible, but terminal execution evidence is not complete yet."),
+            _phase_bar("Validation", 15, "pending", "Validation evidence has not closed the current objective."),
+            _phase_bar("Reflection", 0, "pending"),
+            _phase_bar("Learning", 0, "pending"),
+        ]
+        overall = 42 if task_id else 31
+
+    return {
+        "available": True,
+        "owner": "MIM",
+        "objective_id": objective_id,
+        "task_id": task_id,
+        "status": status_label,
+        "current_phase": current_phase,
+        "overall_progress": overall,
+        "summary": summary,
+        "evidence": [
+            item
+            for item in [
+                _first_text(live.get("event"), default=""),
+                _first_text(live.get("timestamp_la"), default=""),
+                _first_text(live.get("source_path"), default=""),
+            ]
+            if item
+        ],
+        "phases": phases,
     }
 
 
@@ -1249,8 +1340,22 @@ def _studio_mim_live_feed_state() -> dict[str, Any]:
     conversation_focus = _studio_mim_conversation_focus_state()
     request_focus = _studio_mim_request_focus_state()
     hourly_reflection = _load_json("MIM_TOD_HOURLY_REFLECTION.latest.json")
-    primary = conversation_focus or request_focus or {}
-    primary_objective_id = _first_text(primary.get("objective_id"), default="")
+    request_task_id = _first_text(request_focus.get("task_id"), default="")
+    request_id = _first_text(request_focus.get("request_id"), request_task_id, default="")
+    result_task_id = _first_text(execution_result.get("task_id"), default="")
+    result_request_id = _first_text(execution_result.get("request_id"), result_task_id, default="")
+    result_status = _first_text(execution_result.get("execution_state"), execution_result.get("status"), default="").lower()
+    result_is_terminal = result_status in {"blocked", "blocked_with_reason", "failed", "error", "completed", "complete", "done", "succeeded"}
+    result_matches_request = bool(request_focus) and bool(execution_result) and (
+        (request_task_id and result_task_id and request_task_id == result_task_id)
+        or (request_id and result_request_id and request_id == result_request_id)
+    )
+    live_primary = (
+        execution_result
+        if result_matches_request and result_is_terminal
+        else (request_focus or execution_result or active_lane or activity or operator_status or hourly_reflection or {})
+    )
+    conversation_objective_id = _first_text(conversation_focus.get("objective_id"), default="")
     live_artifact_objective_ids = {
         _first_text(request_focus.get("objective_id"), default=""),
         _first_text(execution_result.get("objective_id"), default=""),
@@ -1260,10 +1365,11 @@ def _studio_mim_live_feed_state() -> dict[str, Any]:
     live_artifact_objective_ids.discard("")
     conversation_focus_unverified = (
         bool(conversation_focus)
-        and primary is conversation_focus
-        and bool(primary_objective_id)
-        and primary_objective_id not in live_artifact_objective_ids
+        and bool(conversation_objective_id)
+        and conversation_objective_id not in live_artifact_objective_ids
     )
+    primary = conversation_focus if conversation_focus_unverified else (live_primary or conversation_focus or {})
+    primary_objective_id = _first_text(primary.get("objective_id"), default="")
     event = _first_text(
         primary.get("source"),
         execution_result.get("reason_code"),
@@ -1370,6 +1476,9 @@ def _studio_mim_live_feed_state() -> dict[str, Any]:
         if task_id:
             parts.append(f"Task: {task_id}")
         parts.append(f"Now: {summary}")
+        reason_code = _first_text(primary.get("reason_code"), primary.get("terminal_reason_code"), default="")
+        if reason_code:
+            parts.append(f"Reason: {reason_code}")
         if not conversation_focus_unverified:
             plain_meaning = _first_text(primary.get("plain_meaning"), default=" | ".join(parts))
 
@@ -1410,7 +1519,7 @@ def _studio_mim_live_feed_state() -> dict[str, Any]:
         ]
         if item
     ]
-    return {
+    payload = {
         "ok": True,
         "state": state,
         "label": label,
@@ -1425,6 +1534,8 @@ def _studio_mim_live_feed_state() -> dict[str, Any]:
         "task_id": task_id,
         "recent_events": recent_events,
     }
+    payload["objective_lifecycle"] = _studio_mim_objective_lifecycle(payload)
+    return payload
 
 
 def _studio_mim_body() -> str:
@@ -1459,6 +1570,18 @@ def _studio_mim_body() -> str:
       .mim-live-body {{ padding: 12px; display: grid; gap: 7px; }}
       .mim-live-row {{ display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 12px; font-size: 13px; }}
       .mim-live-row b {{ color: var(--soft); text-transform: uppercase; font-size: 11px; letter-spacing: .04em; }}
+      .mim-lifecycle {{ border-top: 1px solid rgba(110,231,216,.14); padding: 10px 12px 12px; display: grid; gap: 9px; }}
+      .mim-lifecycle-title {{ display: flex; justify-content: space-between; gap: 10px; align-items: baseline; font-size: 12px; color: var(--soft); }}
+      .mim-lifecycle-title strong {{ color: var(--text); font-size: 13px; overflow-wrap: anywhere; }}
+      .mim-lifecycle-meta {{ color: var(--muted); font-size: 11px; line-height: 1.35; overflow-wrap: anywhere; }}
+      .mim-phase-list {{ display: grid; gap: 7px; }}
+      .mim-phase-row {{ display: grid; grid-template-columns: 92px minmax(0, 1fr) 36px; gap: 8px; align-items: center; font-size: 11px; color: var(--muted); }}
+      .mim-phase-name {{ color: var(--soft); font-weight: 800; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+      .mim-phase-track {{ height: 7px; border-radius: 999px; background: rgba(159,176,196,.13); overflow: hidden; }}
+      .mim-phase-fill {{ height: 100%; border-radius: inherit; background: rgba(110,231,216,.72); }}
+      .mim-phase-row[data-state="active"] .mim-phase-fill {{ background: var(--accent); box-shadow: 0 0 10px rgba(110,231,216,.34); }}
+      .mim-phase-row[data-state="blocked"] .mim-phase-fill {{ background: var(--warn); }}
+      .mim-phase-row[data-state="done"] .mim-phase-fill {{ background: var(--good); }}
       .mim-activity-list {{ max-height: min(360px, 42vh); overflow: auto; display: grid; gap: 8px; padding: 10px 12px 12px; border-top: 1px solid rgba(110,231,216,.14); }}
       .mim-activity-item {{ border: 1px solid rgba(110,231,216,.18); border-radius: 9px; background: rgba(2,10,18,.58); padding: 9px 10px; display: grid; gap: 5px; }}
       .mim-activity-meta {{ color: var(--muted); font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; }}
@@ -1505,6 +1628,7 @@ def _studio_mim_body() -> str:
             <div class="mim-live-row"><b>Now</b><span id="mimLiveSummary">{live_summary}</span></div>
             <div class="mim-live-row"><b>Meaning</b><span id="mimLiveMeaning">{live_meaning}</span></div>
           </div>
+          <div id="mimLifecycle" class="mim-lifecycle" aria-label="MIM objective lifecycle"></div>
           <div id="mimActivityList" class="mim-activity-list" aria-label="MIM live activity stream"></div>
         </div>
         <div class="mim-thread-heading">Chats</div>
@@ -1552,6 +1676,7 @@ def _studio_mim_body() -> str:
         const liveStatus = document.getElementById('mimLiveStatus');
         const liveSummary = document.getElementById('mimLiveSummary');
         const liveMeaning = document.getElementById('mimLiveMeaning');
+        const lifecycleNode = document.getElementById('mimLifecycle');
         const activityList = document.getElementById('mimActivityList');
         let messages = [];
         let attachments = [];
@@ -1601,6 +1726,33 @@ def _studio_mim_body() -> str:
             return {{ ...item, signature: [item.state, item.label, item.time, item.summary, item.meaning].join('|') }};
           }}).filter((item) => item.summary).slice(0, 20);
           renderActivityList();
+        }}
+        function renderLifecycle(lifecycle) {{
+          if (!lifecycleNode) return;
+          const data = lifecycle && typeof lifecycle === 'object' ? lifecycle : {{}};
+          const phases = Array.isArray(data.phases) ? data.phases : [];
+          const progress = Math.max(0, Math.min(100, Number(data.overall_progress || 0)));
+          const objective = String(data.objective_id || 'No active objective');
+          const phase = String(data.current_phase || 'Unknown');
+          const status = String(data.status || 'Unknown');
+          const summary = String(data.summary || '');
+          const phaseHtml = phases.length ? phases.map((item) => {{
+            const pct = Math.max(0, Math.min(100, Number(item && item.percent || 0)));
+            const itemState = String(item && item.state || 'pending');
+            return `
+              <div class="mim-phase-row" data-state="${{escapeHtml(itemState)}}" title="${{escapeHtml(item && item.detail || '')}}">
+                <span class="mim-phase-name">${{escapeHtml(item && item.label || 'Phase')}}</span>
+                <span class="mim-phase-track"><span class="mim-phase-fill" style="width:${{pct}}%"></span></span>
+                <span>${{Math.round(pct)}}%</span>
+              </div>
+            `;
+          }}).join('') : '<div class="mim-lifecycle-meta">No phase telemetry is published yet.</div>';
+          lifecycleNode.innerHTML = `
+            <div class="mim-lifecycle-title"><strong>${{escapeHtml(objective)}}</strong><span>${{Math.round(progress)}}%</span></div>
+            <div class="mim-lifecycle-meta">Status: ${{escapeHtml(status)}} | Current phase: ${{escapeHtml(phase)}}</div>
+            ${{summary ? '<div class="mim-lifecycle-meta">' + escapeHtml(summary) + '</div>' : ''}}
+            <div class="mim-phase-list">${{phaseHtml}}</div>
+          `;
         }}
         function nowIso() {{ return new Date().toISOString(); }}
         function loadLocal() {{
@@ -1779,6 +1931,7 @@ def _studio_mim_body() -> str:
             if (liveStatus) liveStatus.textContent = (data.label || 'Ready') + (data.timestamp_la ? ' - ' + data.timestamp_la : '');
             if (liveSummary) liveSummary.textContent = data.summary || 'No active MIM/TOD activity is currently visible.';
             if (liveMeaning) liveMeaning.textContent = data.plain_meaning || '';
+            renderLifecycle(data.objective_lifecycle);
             if (Array.isArray(data.recent_events) && data.recent_events.length) setActivityEvents(data.recent_events);
             else rememberActivity(data);
           }} catch (error) {{}}
@@ -1844,6 +1997,7 @@ def _studio_tod_body() -> str:
           </div>
           <p id="todLiveSummary">Loading the current TOD execution state.</p>
           <p id="todLiveMeaning" class="tod-live-meaning">This panel shows what TOD is doing now in plain operator language.</p>
+          <div id="todLifecycle" class="tod-lifecycle" aria-label="TOD objective lifecycle"></div>
           <div id="todActivityList" class="tod-activity-list" aria-label="TOD live activity stream"></div>
         </div>
         <div class="tod-thread-heading">Sessions</div>
@@ -1873,13 +2027,14 @@ def _studio_tod_body() -> str:
       .tod-history-rail,.tod-chat-workspace{border:1px solid rgba(97,219,191,.24);background:rgba(4,18,28,.72);border-radius:18px;box-shadow:0 16px 36px rgba(0,0,0,.18)}
       .tod-history-rail{padding:14px;overflow:auto}.tod-rail-header{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px}.tod-kicker{margin:0 0 4px;color:#69d7ff;font-size:11px;font-weight:900;letter-spacing:.14em;text-transform:uppercase}.tod-rail-header h2{margin:0;font-size:18px}.tod-rail-subtitle{margin-top:4px;color:var(--studio-muted);font-size:12px}.tod-thread-heading{margin:14px 0 8px;color:#c5f1ff;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}.tod-thread-list{display:grid;gap:8px}.tod-thread-item{width:100%;text-align:left;border:1px solid rgba(97,219,191,.18);background:rgba(2,10,18,.62);color:var(--studio-ink);border-radius:12px;padding:11px 12px;cursor:pointer}.tod-thread-item.active{border-color:rgba(105,215,255,.68);background:rgba(9,46,67,.72)}.tod-thread-title{font-weight:900;font-size:13px;margin-bottom:4px}.tod-thread-meta{color:var(--studio-muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
       .tod-chat-workspace{display:grid;grid-template-rows:minmax(280px,1fr) auto;gap:12px;padding:14px;overflow:hidden}.tod-live-card{border:1px solid rgba(97,219,191,.24);border-radius:16px;padding:14px;background:rgba(2,12,20,.76)}.tod-live-card[data-state=working],.tod-live-card[data-state=running],.tod-live-card[data-state=pending]{border-color:rgba(105,215,255,.56);background:rgba(7,35,52,.76)}.tod-live-card[data-state=blocked],.tod-live-card[data-state=stalled],.tod-live-card[data-state=failed]{border-color:rgba(255,111,141,.58);background:rgba(48,13,27,.58)}.tod-live-top{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.tod-live-eyebrow{display:flex;align-items:center;gap:8px;color:#69d7ff;font-size:12px;font-weight:900;letter-spacing:.1em;text-transform:uppercase}.tod-dot{width:9px;height:9px;border-radius:50%;background:#69d7ff;box-shadow:0 0 14px rgba(105,215,255,.6)}.tod-live-card h2{margin:9px 0 6px;font-size:clamp(18px,2vw,24px)}.tod-live-card p{margin:0;color:var(--studio-muted);line-height:1.45}.tod-live-meaning{margin-top:8px!important;color:#b7d7e6!important}.tod-live-pill{border:1px solid rgba(105,215,255,.45);border-radius:999px;color:#c5f1ff;padding:7px 10px;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
+      .tod-lifecycle{margin-top:12px;padding-top:12px;border-top:1px solid rgba(97,219,191,.16);display:grid;gap:9px}.tod-lifecycle-title{display:flex;justify-content:space-between;gap:10px;align-items:baseline;color:#c5f1ff;font-size:12px}.tod-lifecycle-title strong{font-size:13px;overflow-wrap:anywhere}.tod-lifecycle-meta{color:var(--studio-muted);font-size:11px;line-height:1.35;overflow-wrap:anywhere}.tod-phase-list{display:grid;gap:7px}.tod-phase-row{display:grid;grid-template-columns:74px minmax(0,1fr) 36px;gap:8px;align-items:center;color:var(--studio-muted);font-size:11px}.tod-phase-name{color:#c5f1ff;font-weight:900;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.tod-phase-track{height:7px;border-radius:999px;background:rgba(197,241,255,.13);overflow:hidden}.tod-phase-fill{height:100%;border-radius:inherit;background:rgba(105,215,255,.7)}.tod-phase-row[data-state=active] .tod-phase-fill{background:#69d7ff;box-shadow:0 0 10px rgba(105,215,255,.35)}.tod-phase-row[data-state=blocked] .tod-phase-fill{background:#ffd166}.tod-phase-row[data-state=done] .tod-phase-fill{background:#67ffbc}
       .tod-activity-list{max-height:min(360px,42vh);overflow:auto;display:grid;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(97,219,191,.16)}.tod-activity-item{border:1px solid rgba(97,219,191,.18);border-radius:12px;background:rgba(2,10,18,.58);padding:9px 10px;display:grid;gap:5px}.tod-activity-meta{color:var(--studio-muted);font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.05em}.tod-activity-summary{color:var(--studio-ink);font-size:12px;line-height:1.35}.tod-activity-meaning{color:#b7d7e6;font-size:12px;line-height:1.35}
       .tod-chat-scroll{overflow:auto;padding:18px 6px;scroll-behavior:smooth}.tod-message-row{display:flex;margin:0 0 14px}.tod-message-row.operator{justify-content:flex-end}.tod-message-row.system{justify-content:center}.tod-message-bubble{max-width:min(760px,86%);border:1px solid rgba(97,219,191,.18);border-radius:18px;padding:12px 14px;white-space:pre-wrap;line-height:1.48;background:rgba(3,13,22,.72)}.tod-message-row.operator .tod-message-bubble{background:rgba(13,74,105,.7);border-color:rgba(105,215,255,.35)}.tod-message-row.tod .tod-message-bubble{background:rgba(5,35,28,.74);border-color:rgba(103,255,188,.24)}.tod-message-row.system .tod-message-bubble{max-width:min(620px,88%);background:rgba(50,40,11,.42);border-color:rgba(255,209,102,.34);color:#ffe8a8}.tod-message-meta{color:var(--studio-muted);font-size:11px;font-weight:900;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}
       .tod-composer-shell{border:1px solid rgba(97,219,191,.24);border-radius:18px;padding:12px;background:rgba(2,11,18,.82)}.tod-file-drop{display:none;border:1px dashed rgba(105,215,255,.42);border-radius:12px;padding:10px 12px;margin-bottom:10px;color:var(--studio-muted);font-size:12px}.tod-file-drop.active{display:block}#todChatInput{width:100%;max-height:180px;min-height:54px;resize:none;border:0;outline:0;border-radius:14px;background:rgba(5,19,31,.86);color:var(--studio-ink);padding:14px;font:inherit;line-height:1.45}.tod-attachment-summary{min-height:18px;margin:8px 0 0;color:var(--studio-muted);font-size:12px}.tod-composer-actions{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:8px}.tod-tool-row{display:flex;align-items:center;gap:8px}.tod-icon-button,.tod-send-button{border:1px solid rgba(105,215,255,.34);background:rgba(8,42,60,.82);color:#e8f8ff;cursor:pointer;font:inherit}.tod-icon-button{width:34px;height:34px;border-radius:50%;display:inline-grid;place-items:center;font-weight:900}.tod-send-button{border-radius:999px;padding:9px 16px;font-weight:900}.tod-icon-button:hover,.tod-send-button:hover{border-color:rgba(105,215,255,.78);background:rgba(13,82,112,.9)}
       @media(max-width:860px){.tod-chat-page{height:auto;grid-template-columns:1fr}.tod-history-rail{min-height:auto}.tod-chat-workspace{min-height:680px}}
     </style>
     <script>
-      (()=>{const sessionKey='tod-console-public',localKey='studioTodThreadV1:'+sessionKey;let messages=[],attachments=[],todActivityItems=[],messageUrl='/tod/ui/chat/message',handoffUrl='/tod/ui/chat/handoff',uploadUrl='/tod/ui/chat/upload-image';const chatScroll=document.getElementById('todChatScroll'),input=document.getElementById('todChatInput'),fileInput=document.getElementById('todFileInput'),fileDrop=document.getElementById('todFileDrop'),attachmentSummary=document.getElementById('todAttachmentSummary'),todActivityList=document.getElementById('todActivityList');
+      (()=>{const sessionKey='tod-console-public',localKey='studioTodThreadV1:'+sessionKey;let messages=[],attachments=[],todActivityItems=[],messageUrl='/tod/ui/chat/message',handoffUrl='/tod/ui/chat/handoff',uploadUrl='/tod/ui/chat/upload-image';const chatScroll=document.getElementById('todChatScroll'),input=document.getElementById('todChatInput'),fileInput=document.getElementById('todFileInput'),fileDrop=document.getElementById('todFileDrop'),attachmentSummary=document.getElementById('todAttachmentSummary'),todActivityList=document.getElementById('todActivityList'),todLifecycle=document.getElementById('todLifecycle');
       function cleanText(value){return String(value||'').replace(/ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â·/g,' · ').replace(/ÃƒÂ¢Ã‚Â¬Ã‚Â¦/g,' ').replace(/ÃƒÂ¢Ã‚Â€Ã‚Â¢/g,' · ').replace(/ÃƒÂ¢Ã‚Â€Ã‚Â”/g,' - ').replace(/ÃƒÂ¢[\\S]{0,90}/g,' ').replace(/Ã‚[\\S]{0,40}/g,' ').replace(/\\s{2,}/g,' ').trim()}
       function escapeHtml(value){return cleanText(value).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]))}
       function roleLabel(role){const clean=String(role||'').toLowerCase();if(['visitor','operator','user'].includes(clean))return'Operator';if(['tod','assistant','copilot'].includes(clean))return'TOD';return'System'}
@@ -1893,7 +2048,10 @@ def _studio_tod_body() -> str:
       function updateAttachmentSummary(){attachmentSummary.textContent=attachments.length?`${attachments.length} attachment(s): ${attachments.map(item=>item.name).join(', ')}`:''}
       function autoSize(){if(!input)return;input.style.height='auto';input.style.height=Math.min(input.scrollHeight,180)+'px'}
       function displayTime(value){const text=cleanText(value);if(!text)return'';const parsed=Date.parse(text);if(Number.isNaN(parsed))return text;return new Date(parsed).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});}
-      function updateLive(payload,liveState){const activity=payload?.session?.activity||{},execution=liveState?.execution||{},status=liveState?.status||payload?.status||{},quick=liveState?.quick_facts||payload?.quick_facts||{},training=liveState?.training_status||{},marker=payload?.state_marker||{};const state=(cleanText(execution.activity_state||status.code||activity.state||'idle').toLowerCase()||'idle'),label=cleanText(execution.activity_label||status.label||activity.label||state||'Ready'),summary=cleanText(execution.activity_summary||execution.summary||status.summary||activity.summary||'TOD is ready.'),objective=cleanText(execution.objective_id||quick.live_request_objective||quick.canonical_objective||marker.objective_id||marker.canonical_objective||''),task=cleanText(execution.task_id||execution.task_focus||quick.active_task_id||quick.request_task_id||marker.task_id||''),action=cleanText(execution.current_action||execution.wait_reason||execution.authoritative_next_action||quick.decision_outcome||''),timestamp=cleanText(execution.updated_at||execution.generated_at||liveState?.generated_at||payload?.session?.updated_at||activity.last_activity_at||''),timeLabel=timestamp?displayTime(timestamp):'';const parts=[];if(objective)parts.push(`Objective: ${objective}`);if(task)parts.push(`Task: ${task}`);if(action)parts.push(`Now: ${action}`);if(training?.active)parts.push(`Training: ${cleanText(training.state_label||training.state||'active')}`);const meaningText=parts.length?parts.join(' | '):'No active TOD lane is visible yet.';document.getElementById('todLiveCard')?.setAttribute('data-state',state);const title=document.getElementById('todLiveTitle'),stateEl=document.getElementById('todLiveState'),summaryEl=document.getElementById('todLiveSummary'),meaningEl=document.getElementById('todLiveMeaning');if(title)title.textContent=label==='Idle'?'TOD is ready':`TOD is ${label.toLowerCase()}`;if(stateEl)stateEl.textContent=`${label}${timeLabel?' - '+timeLabel:''}`;if(summaryEl)summaryEl.textContent=summary;if(meaningEl)meaningEl.textContent=meaningText;rememberTodActivity({state,label,time:timeLabel,summary,meaning:meaningText})}
+      function phaseRow(label,percent,state,detail){return{label,percent:Math.max(0,Math.min(100,Number(percent||0))),state:cleanText(state||'pending'),detail:cleanText(detail||'')}}
+      function buildTodLifecycle(liveState,payload){const execution=liveState?.execution||{},status=liveState?.status||payload?.status||{},cards=Array.isArray(liveState?.objective_cards)?liveState.objective_cards:[],card=cards.length&&typeof cards[0]==='object'?cards[0]:{},progress=card.phase_progress||execution.phase_progress||{},artifacts=card.artifacts||{},state=cleanText(execution.activity_state||status.code||payload?.session?.activity?.state||'idle').toLowerCase(),objective=cleanText(card.objective_id||execution.objective_id||liveState?.quick_facts?.live_request_objective||'No active objective'),task=cleanText(card.task_id||execution.task_id||execution.task_focus||''),summary=cleanText(card.summary||execution.activity_summary||execution.summary||status.summary||'No current TOD objective summary is published.'),statusLabel=cleanText(card.status||execution.activity_label||status.label||state||'Ready'),validationChecks=Array.isArray(artifacts.validation_checks)?artifacts.validation_checks:[],filesChanged=Array.isArray(artifacts.files_changed)?artifacts.files_changed:[],percent=Number(progress.percent_complete||0),completed=state==='complete'||state==='completed'||state==='done'||percent>=100,blocked=['blocked','blocked_with_reason','failed','stalled','waiting'].includes(state);let current='Accept';if(completed)current='Complete';else if(blocked)current='Recover';else if(String(progress.next_gate||'').toLowerCase().includes('validation'))current='Validate';else if(percent>=45)current='Execute';else if(percent>=15||task)current='Plan';const phases=completed?[phaseRow('Accept',100,'done','Task accepted.'),phaseRow('Plan',100,'done','Execution shape is known.'),phaseRow('Execute',100,'done','Execution reached a terminal state.'),phaseRow('Validate',100,'done',validationChecks.length+' validation check(s) published.'),phaseRow('Recover',100,'done','No active recovery blocker is published.'),phaseRow('Complete',100,'done','Objective result is complete.')]:[phaseRow('Accept',objective==='No active objective'?10:100,objective==='No active objective'?'active':'done','Objective identity and task request visibility.'),phaseRow('Plan',task?80:35,task?'active':'pending','Task scope and next executable shape.'),phaseRow('Execute',blocked?45:(percent?Math.min(80,percent):25),blocked?'blocked':'active',cleanText(execution.current_action||execution.wait_reason||'Execution evidence is still moving.')),phaseRow('Validate',validationChecks.length?60:15,validationChecks.length?'active':'pending',validationChecks.length+' validation check(s) visible.'),phaseRow('Recover',blocked?70:0,blocked?'active':'pending',cleanText(execution.wait_reason||progress.next_gate||'No active recovery requirement published.')),phaseRow('Complete',0,'pending','Waiting for terminal result and evidence publication.')];return{objective_id:objective,task_id:task,status:statusLabel,current_phase:current,overall_progress:completed?100:Math.max(0,Math.min(99,percent||Math.round(phases.reduce((sum,item)=>sum+item.percent,0)/phases.length))),summary,files_changed:filesChanged.length,validation_checks:validationChecks.length,phases}}
+      function renderTodLifecycle(lifecycle){if(!todLifecycle)return;const data=lifecycle&&typeof lifecycle==='object'?lifecycle:{};const phases=Array.isArray(data.phases)?data.phases:[];const progress=Math.max(0,Math.min(100,Number(data.overall_progress||0)));const phaseHtml=phases.length?phases.map(item=>{const pct=Math.max(0,Math.min(100,Number(item?.percent||0)));const state=cleanText(item?.state||'pending');return`<div class="tod-phase-row" data-state="${escapeHtml(state)}" title="${escapeHtml(item?.detail||'')}"><span class="tod-phase-name">${escapeHtml(item?.label||'Phase')}</span><span class="tod-phase-track"><span class="tod-phase-fill" style="width:${pct}%"></span></span><span>${Math.round(pct)}%</span></div>`}).join(''):'<div class="tod-lifecycle-meta">No phase telemetry is published yet.</div>';todLifecycle.innerHTML=`<div class="tod-lifecycle-title"><strong>${escapeHtml(data.objective_id||'No active objective')}</strong><span>${Math.round(progress)}%</span></div><div class="tod-lifecycle-meta">Status: ${escapeHtml(data.status||'Unknown')} | Current phase: ${escapeHtml(data.current_phase||'Unknown')}</div>${data.task_id?'<div class="tod-lifecycle-meta">Task: '+escapeHtml(data.task_id)+'</div>':''}<div class="tod-lifecycle-meta">${escapeHtml(data.summary||'No current TOD objective summary is published.')}</div><div class="tod-phase-list">${phaseHtml}</div>`}
+      function updateLive(payload,liveState){const activity=payload?.session?.activity||{},execution=liveState?.execution||{},status=liveState?.status||payload?.status||{},quick=liveState?.quick_facts||payload?.quick_facts||{},training=liveState?.training_status||{},marker=payload?.state_marker||{};const state=(cleanText(execution.activity_state||status.code||activity.state||'idle').toLowerCase()||'idle'),label=cleanText(execution.activity_label||status.label||activity.label||state||'Ready'),summary=cleanText(execution.activity_summary||execution.summary||status.summary||activity.summary||'TOD is ready.'),objective=cleanText(execution.objective_id||quick.live_request_objective||quick.canonical_objective||marker.objective_id||marker.canonical_objective||''),task=cleanText(execution.task_id||execution.task_focus||quick.active_task_id||quick.request_task_id||marker.task_id||''),action=cleanText(execution.current_action||execution.wait_reason||execution.authoritative_next_action||quick.decision_outcome||''),timestamp=cleanText(execution.updated_at||execution.generated_at||liveState?.generated_at||payload?.session?.updated_at||activity.last_activity_at||''),timeLabel=timestamp?displayTime(timestamp):'';const parts=[];if(objective)parts.push(`Objective: ${objective}`);if(task)parts.push(`Task: ${task}`);if(action)parts.push(`Now: ${action}`);if(training?.active)parts.push(`Training: ${cleanText(training.state_label||training.state||'active')}`);const meaningText=parts.length?parts.join(' | '):'No active TOD lane is visible yet.';document.getElementById('todLiveCard')?.setAttribute('data-state',state);const title=document.getElementById('todLiveTitle'),stateEl=document.getElementById('todLiveState'),summaryEl=document.getElementById('todLiveSummary'),meaningEl=document.getElementById('todLiveMeaning');if(title)title.textContent=label==='Idle'?'TOD is ready':`TOD is ${label.toLowerCase()}`;if(stateEl)stateEl.textContent=`${label}${timeLabel?' - '+timeLabel:''}`;if(summaryEl)summaryEl.textContent=summary;if(meaningEl)meaningEl.textContent=meaningText;renderTodLifecycle(buildTodLifecycle(liveState,payload));rememberTodActivity({state,label,time:timeLabel,summary,meaning:meaningText})}
       async function refreshState(){const response=await fetch(`/tod/ui/chat/state?session_key=${encodeURIComponent(sessionKey)}&mode=tod`,{cache:'no-store'});if(!response.ok)throw new Error('tod-state-'+response.status);const payload=await response.json();let liveState={};try{const liveResponse=await fetch('/tod/ui/state',{cache:'no-store'});if(liveResponse.ok)liveState=await liveResponse.json();}catch(error){}messageUrl=payload?.actions?.message_url||messageUrl;handoffUrl=payload?.actions?.handoff_url||handoffUrl;uploadUrl=payload?.actions?.upload_url||uploadUrl;if(Array.isArray(payload.messages)){messages=payload.messages;saveLocal();renderMessages()}updateLive(payload,liveState);updateThreadList(payload)}
       async function readFiles(files){for(const file of Array.from(files||[])){const item={name:file.name,type:file.type||'file',size:file.size||0,text:''};if(/^text\\//.test(file.type||'')||/\\.(txt|md|csv|json)$/i.test(file.name))item.text=await file.text();if(/^image\\//.test(file.type||'')&&uploadUrl){item.data_url=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=reject;reader.readAsDataURL(file)})}attachments.push(item)}updateAttachmentSummary()}
       async function sendMessage(){const raw=(input?.value||'').trim();if(!raw&&!attachments.length)return;let message=raw;const textAttachments=attachments.filter(item=>item.text);if(textAttachments.length)message+='\\n\\nAttached content:\\n'+textAttachments.map(item=>`File: ${item.name}\\n${item.text.slice(0,2500)}`).join('\\n\\n');messages.push({role:'operator',content:raw||'Shared attachment',created_at:new Date().toISOString()});renderMessages();saveLocal();if(input){input.value='';autoSize()}const imageAttachment=attachments.find(item=>item.data_url),currentAttachments=attachments;attachments=[];updateAttachmentSummary();const endpoint=imageAttachment&&uploadUrl?uploadUrl:messageUrl,body=imageAttachment&&uploadUrl?{session_key:sessionKey,prompt:message,attachment:{filename:imageAttachment.name,mime_type:imageAttachment.type,data_url:imageAttachment.data_url}}:{session_key:sessionKey,message,attachments:currentAttachments.map(item=>({name:item.name,type:item.type,size:item.size}))};const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!response.ok)throw new Error('tod-message-'+response.status);const payload=await response.json();if(Array.isArray(payload.messages))messages=payload.messages;updateLive(payload);updateThreadList(payload);renderMessages();saveLocal()}

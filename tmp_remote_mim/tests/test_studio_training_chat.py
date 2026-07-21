@@ -996,6 +996,11 @@ class StudioTrainingChatTest(unittest.TestCase):
         self.assertIn("TSK-LIVE", live["plain_meaning"])
         self.assertGreaterEqual(len(live["recent_events"]), 3)
         self.assertEqual(live["recent_events"][0]["label"], "Execution result")
+        lifecycle = live["objective_lifecycle"]
+        self.assertEqual(lifecycle["owner"], "MIM")
+        self.assertEqual(lifecycle["objective_id"], "OBJ-LIVE")
+        self.assertEqual(lifecycle["current_phase"], "Validation")
+        self.assertEqual([item["label"] for item in lifecycle["phases"]], ["Understanding", "Planning", "Execution", "Validation", "Reflection", "Learning"])
 
     def test_studio_mim_live_feed_marks_conversation_objective_without_artifact_unverified(self):
         studio = _import_studio_module()
@@ -1055,6 +1060,105 @@ class StudioTrainingChatTest(unittest.TestCase):
         self.assertIn("MIM-CONVERSATIONAL-LEARNING-AND-REFLECTION-V1", live["plain_meaning"])
         self.assertEqual(live["recent_events"][0]["label"], "MIM conversation focus")
         self.assertTrue(any(item["label"] == "Execution result" for item in live["recent_events"]))
+        self.assertEqual(live["objective_lifecycle"]["current_phase"], "Validation")
+        self.assertTrue(any(item["state"] == "blocked" for item in live["objective_lifecycle"]["phases"]))
+
+    def test_studio_mim_live_feed_prefers_live_execution_truth_over_chat_focus(self):
+        studio = _import_studio_module()
+
+        thread_payload = {
+            "updated_at": "2026-07-20T23:50:00Z",
+            "threads": {
+                "dave::dave-primary-mim-thread": {
+                    "updated_at": "2026-07-20T23:50:00Z",
+                    "messages": [
+                        {
+                            "role": "user",
+                            "text": "what are you working on for MIM-CONVERSATIONAL-LEARNING-AND-REFLECTION-V1?",
+                            "at": "2026-07-20T23:49:30Z",
+                        },
+                        {
+                            "role": "mim",
+                            "text": "I am working on MIM-CONVERSATIONAL-LEARNING-AND-REFLECTION-V1 right now.",
+                            "at": "2026-07-20T23:50:00Z",
+                        },
+                    ],
+                }
+            },
+        }
+
+        def fake_load_json(name):
+            payloads = {
+                "TOD_EXECUTION_RESULT.latest.json": {
+                    "generated_at": "2026-07-21T00:10:00Z",
+                    "execution_state": "blocked",
+                    "objective_id": "MIM-CONVERSATIONAL-LEARNING-AND-REFLECTION-V1",
+                    "task_id": "TSK-STATUS-TRUTH",
+                    "summary": "TOD found the live execution is blocked on missing evidence.",
+                    "current_action": "Separating chat claims from live execution evidence.",
+                    "reason_code": "status_truth_repair_required",
+                },
+            }
+            return payloads.get(name, {})
+
+        with patch.object(studio, "_load_studio_chat_threads", return_value=thread_payload), patch.object(
+            studio,
+            "_load_json",
+            side_effect=fake_load_json,
+        ), patch.object(studio, "_load_json_path", return_value={}):
+            live = studio._studio_mim_live_feed_state()
+
+        self.assertEqual(live["state"], "waiting")
+        self.assertEqual(live["label"], "Blocked")
+        self.assertEqual(live["objective_id"], "MIM-CONVERSATIONAL-LEARNING-AND-REFLECTION-V1")
+        self.assertEqual(live["task_id"], "TSK-STATUS-TRUTH")
+        self.assertIn("Separating chat claims", live["summary"])
+        self.assertIn("TSK-STATUS-TRUTH", live["plain_meaning"])
+        self.assertEqual(live["recent_events"][0]["label"], "MIM conversation focus")
+        self.assertTrue(any(item["label"] == "Execution result" for item in live["recent_events"]))
+
+    def test_studio_mim_live_feed_terminal_result_beats_matching_dispatched_request(self):
+        studio = _import_studio_module()
+
+        def fake_load_json(name):
+            payloads = {
+                "MIM_TOD_TASK_REQUEST.latest.json": {
+                    "generated_at": "2026-07-21T01:36:53Z",
+                    "objective_id": "what-is-the-status-of-this-objective-mim",
+                    "task_id": "REQ-SAME",
+                    "request_id": "REQ-SAME",
+                    "tod_action": "execute-chat-task",
+                    "summary": "Dispatch this status objective.",
+                },
+                "TOD_EXECUTION_RESULT.latest.json": {
+                    "generated_at": "2026-07-21T01:35:15Z",
+                    "execution_state": "blocked_with_reason",
+                    "status": "blocked",
+                    "objective_id": "what-is-the-status-of-this-objective-mim",
+                    "task_id": "REQ-SAME",
+                    "request_id": "REQ-SAME",
+                    "summary": "TOD cannot continue until exact current-code directives exist.",
+                    "current_action": "Blocked execution on explicit missing materialization evidence.",
+                    "reason_code": "missing_current_code_materialization",
+                },
+            }
+            return payloads.get(name, {})
+
+        with patch.object(studio, "_load_studio_chat_threads", return_value={}), patch.object(
+            studio,
+            "_load_json",
+            side_effect=fake_load_json,
+        ), patch.object(studio, "_load_json_path", return_value={}):
+            live = studio._studio_mim_live_feed_state()
+
+        self.assertEqual(live["state"], "waiting")
+        self.assertEqual(live["label"], "Blocked")
+        self.assertEqual(live["objective_id"], "what-is-the-status-of-this-objective-mim")
+        self.assertEqual(live["task_id"], "REQ-SAME")
+        self.assertIn("Blocked execution", live["summary"])
+        self.assertIn("missing_current_code_materialization", live["plain_meaning"])
+        self.assertEqual(live["objective_lifecycle"]["task_id"], "REQ-SAME")
+        self.assertGreater(live["objective_lifecycle"]["overall_progress"], 0)
 
     def test_studio_mim_and_tod_side_rails_prioritize_live_work(self):
         studio = _import_studio_module()
@@ -1064,6 +1168,14 @@ class StudioTrainingChatTest(unittest.TestCase):
             "timestamp_la": "Jul 20, 3:14 PM",
             "summary": "Current live work summary.",
             "plain_meaning": "Objective: OBJ | Task: TSK",
+            "objective_lifecycle": {
+                "objective_id": "OBJ",
+                "status": "In progress",
+                "current_phase": "Execution",
+                "overall_progress": 42,
+                "summary": "Current live work summary.",
+                "phases": [],
+            },
             "recent_events": [],
         }
         with patch.object(studio, "_studio_mim_live_feed_state", return_value=live):
@@ -1071,9 +1183,12 @@ class StudioTrainingChatTest(unittest.TestCase):
         tod_body = studio._studio_tod_body()
 
         self.assertLess(mim_body.index('id="mimLiveCard"'), mim_body.index('id="mimThreadList"'))
+        self.assertLess(mim_body.index('id="mimLifecycle"'), mim_body.index('id="mimActivityList"'))
         self.assertIn("Live work and chat history", mim_body)
         self.assertLess(tod_body.index('id="todLiveCard"'), tod_body.index('id="todThreadList"'))
+        self.assertLess(tod_body.index('id="todLifecycle"'), tod_body.index('id="todActivityList"'))
         self.assertIn("Execution lane and sessions", tod_body)
+        self.assertIn("buildTodLifecycle", tod_body)
 
 
 if __name__ == "__main__":

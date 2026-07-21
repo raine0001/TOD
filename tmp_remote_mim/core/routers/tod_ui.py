@@ -2667,6 +2667,128 @@ def _derive_execution_live_state(
     }
 
 
+def _build_tod_status_truth_object(state: dict[str, Any]) -> dict[str, Any]:
+    """Project one operator-facing TOD status truth object from current evidence."""
+    state = state if isinstance(state, dict) else {}
+    status = state.get("status") if isinstance(state.get("status"), dict) else {}
+    execution = state.get("execution") if isinstance(state.get("execution"), dict) else {}
+    training = state.get("training_status") if isinstance(state.get("training_status"), dict) else {}
+    quick_facts = state.get("quick_facts") if isinstance(state.get("quick_facts"), dict) else {}
+    live_state = execution.get("live_state") if isinstance(execution.get("live_state"), dict) else {}
+    binding = execution.get("executor_binding") if isinstance(execution.get("executor_binding"), dict) else {}
+    phase_progress = execution.get("phase_progress") if isinstance(execution.get("phase_progress"), dict) else {}
+    stall_signal = execution.get("stall_signal") if isinstance(execution.get("stall_signal"), dict) else {}
+    source_paths = state.get("source_paths") if isinstance(state.get("source_paths"), dict) else {}
+
+    activity_state = _compact_text(
+        live_state.get("status") or execution.get("activity_state") or execution.get("execution_state") or status.get("code"),
+        80,
+    ) or "idle"
+    activity_label = _compact_text(
+        live_state.get("status_label") or execution.get("activity_label") or status.get("label"),
+        80,
+    ) or activity_state.replace("_", " ").title()
+    objective_id = _compact_text(
+        execution.get("objective_id")
+        or quick_facts.get("canonical_objective")
+        or quick_facts.get("live_request_objective"),
+        160,
+    )
+    task_id = _compact_text(execution.get("task_id") or quick_facts.get("active_task_id"), 160)
+    current_action = _clean_operator_status_text(
+        _pick_first_text(
+            execution.get("current_action"),
+            live_state.get("status_detail"),
+            execution.get("activity_summary"),
+            execution.get("summary"),
+            training.get("current_step"),
+            status.get("summary"),
+        ),
+        320,
+    )
+    blocker = _clean_operator_status_text(
+        _pick_first_text(
+            execution.get("wait_reason"),
+            live_state.get("stuck_on"),
+            execution.get("activity_summary") if activity_state in {"blocked", "stalled", "waiting"} else "",
+            stall_signal.get("summary"),
+        ),
+        320,
+    )
+    binding_status = _compact_text(binding.get("status") or execution.get("executor_binding_status"), 80).lower()
+    binding_ready = binding_status in {"ready", "present"}
+    if binding_ready and "local execution binding missing" in " ".join((blocker, current_action)).lower():
+        blocker = "The local executor binding is ready; the remaining blocker is stale execution evidence or missing material proof."
+    is_blocked = activity_state in {"blocked", "stalled"} or bool(stall_signal.get("flagged")) or (
+        activity_state == "waiting" and bool(blocker)
+    )
+    if binding_status == "missing":
+        is_blocked = True
+        blocker = _pick_first_text(
+            blocker,
+            "Executor binding is missing for the queued objective step.",
+        )
+    next_action = _clean_operator_status_text(
+        _pick_first_text(
+            execution.get("next_step"),
+            live_state.get("next_to_progress"),
+            execution.get("next_validation"),
+            training.get("current_step"),
+            _next_bounded_repair_request(state),
+        ),
+        360,
+    )
+    validation = _clean_operator_status_text(
+        _pick_first_text(
+            execution.get("next_validation"),
+            execution.get("validation_summary"),
+            phase_progress.get("next_gate"),
+        ),
+        240,
+    )
+    current_phase = _compact_text(
+        phase_progress.get("label") or execution.get("phase") or execution.get("execution_chain_stage"),
+        80,
+    ) or ("Recovery" if is_blocked else "Execution" if activity_state in {"working", "waiting"} else "Status")
+    evidence = _clean_operator_status_text(
+        _pick_first_text(
+            execution.get("command_output"),
+            execution.get("validation_summary"),
+            execution.get("reason_code"),
+            status.get("summary"),
+        ),
+        300,
+    )
+    source_artifacts = {
+        key: value
+        for key, value in source_paths.items()
+        if value and key in {"active_task", "execution_result", "validation_result", "execution_truth", "shared_truth"}
+    }
+    dave_needed = "no"
+    if any(term in " ".join((blocker, next_action)).lower() for term in ("credential", "authority", "physical", "operator decision")):
+        dave_needed = "only if the blocker is truly external"
+
+    return {
+        "schema_version": "tod-status-truth-v1",
+        "source": "tod_status_truth_object",
+        "status_code": activity_state,
+        "status_label": activity_label,
+        "blocked": is_blocked,
+        "current_phase": current_phase,
+        "objective_id": objective_id,
+        "task_id": task_id,
+        "current_action": current_action,
+        "blocker": blocker,
+        "next_action": next_action,
+        "validation": validation,
+        "evidence": evidence,
+        "dave_needed": dave_needed,
+        "last_update_at": _pick_first_text(execution.get("updated_at"), state.get("generated_at")),
+        "last_update_age_seconds": execution.get("last_update_age_seconds"),
+        "source_artifacts": source_artifacts,
+    }
+
+
 def _normalize_execution_status(
     active_objective_payload: Any,
     active_task_payload: Any,
@@ -6654,12 +6776,14 @@ def _compose_contextual_tod_reply(message: str, state: dict[str, Any], *, focus:
     execution = state.get("execution") if isinstance(state.get("execution"), dict) else {}
     training = state.get("training_status") if isinstance(state.get("training_status"), dict) else {}
     binding = execution.get("executor_binding") if isinstance(execution.get("executor_binding"), dict) else {}
+    truth = state.get("tod_status_truth") if isinstance(state.get("tod_status_truth"), dict) else _build_tod_status_truth_object(state)
 
-    activity_label = _clean_operator_status_text(execution.get("activity_label"), 80)
-    activity_state = str(execution.get("activity_state") or execution.get("status") or status.get("code") or "").strip().lower()
+    activity_label = _clean_operator_status_text(truth.get("status_label") or execution.get("activity_label"), 80)
+    activity_state = str(truth.get("status_code") or execution.get("activity_state") or execution.get("status") or status.get("code") or "").strip().lower()
     binding_status = str(binding.get("status") or execution.get("executor_binding_status") or "").strip().lower()
     binding_reason = str(binding.get("reason_code") or "").strip()
     current_work = _pick_first_text(
+        truth.get("current_action"),
         execution.get("current_action"),
         execution.get("activity_summary"),
         execution.get("summary"),
@@ -6670,6 +6794,7 @@ def _compose_contextual_tod_reply(message: str, state: dict[str, Any], *, focus:
     current_work = _clean_operator_status_text(current_work, 280)
     next_action = _clean_operator_status_text(
         _pick_first_text(
+            truth.get("next_action"),
             execution.get("next_step"),
             execution.get("next_validation"),
             training.get("latest_resolution"),
@@ -6680,6 +6805,7 @@ def _compose_contextual_tod_reply(message: str, state: dict[str, Any], *, focus:
     )
     blocker = _clean_operator_status_text(
         _pick_first_text(
+            truth.get("blocker"),
             execution.get("wait_reason"),
             execution.get("activity_summary") if activity_state in {"blocked", "stalled", "waiting"} else "",
             status.get("summary") if str(status.get("code") or "").lower() in {"blocked", "blocked_with_reason"} else "",
@@ -6687,7 +6813,7 @@ def _compose_contextual_tod_reply(message: str, state: dict[str, Any], *, focus:
         260,
     )
 
-    blocked = activity_state in {"blocked", "stalled", "waiting"} or binding_status == "missing"
+    blocked = bool(truth.get("blocked")) or activity_state in {"blocked", "stalled", "waiting"} or binding_status == "missing"
     if binding_status == "missing":
         blocker = _pick_first_text(
             blocker,
@@ -6712,13 +6838,13 @@ def _compose_contextual_tod_reply(message: str, state: dict[str, Any], *, focus:
             lines = [
                 f"Yes. I am currently blocked or stalled on: {blocker or current_work or 'the current execution lane.'}",
                 f"What I am doing next: {next_action or 'checking the smallest evidence path that changes the blocker.'}",
-                "Dave needed: no, unless this turns into a credential, authority, or physical-machine dependency.",
+                f"Dave needed: {truth.get('dave_needed') or 'no, unless this turns into a credential, authority, or physical-machine dependency.'}.",
             ]
         else:
             lines = [
                 f"No active blocker is published right now. I am working on: {current_work or 'the current TOD execution lane.'}",
                 f"Next proof I should produce: {next_action or 'a fresh execution result or validation artifact.'}",
-                "Dave needed: no.",
+                f"Dave needed: {truth.get('dave_needed') or 'no'}.",
             ]
         return "\n".join(lines)
 
@@ -6727,7 +6853,7 @@ def _compose_contextual_tod_reply(message: str, state: dict[str, Any], *, focus:
             f"I am working on: {current_work or 'the current TOD execution lane.'}",
             f"Current blocker: {blocker if blocked else 'none published as active.'}",
             f"Next thing I should prove: {next_action or 'a fresh execution result with validation evidence.'}",
-            "Dave needed: no, unless I hit an external dependency.",
+            f"Dave needed: {truth.get('dave_needed') or 'no, unless I hit an external dependency.'}.",
         ]
         return "\n".join(lines)
 
@@ -6736,7 +6862,7 @@ def _compose_contextual_tod_reply(message: str, state: dict[str, Any], *, focus:
         f"What matters: {current_work or 'I need to keep the active execution lane moving with real evidence.'}",
         f"Blocked: {'yes - ' + blocker if blocked and blocker else 'yes' if blocked else 'no active blocker is published.'}",
         f"Continuing now: {next_action or 'checking for a fresh execution result and validation proof.'}",
-        "Dave needed: no, unless the next blocker is external.",
+        f"Dave needed: {truth.get('dave_needed') or 'no, unless the next blocker is external.'}.",
     ]
     return "\n".join(lines)
 
@@ -6976,6 +7102,7 @@ def _build_execution_feed_messages(state: dict[str, Any]) -> list[dict[str, str]
     execution = state.get("execution") if isinstance(state.get("execution"), dict) else {}
     if not execution or not execution.get("available"):
         return []
+    truth = state.get("tod_status_truth") if isinstance(state.get("tod_status_truth"), dict) else _build_tod_status_truth_object(state)
     created_at = str(execution.get("updated_at") or state.get("generated_at") or _utc_now_iso()).strip() or _utc_now_iso()
     title = (_pick_first_text(execution.get("title"), execution.get("task_focus"), execution.get("task_id")) or "the active TOD execution").rstrip(". ")
     activity_label = _pick_first_text(execution.get("activity_label"), execution.get("execution_state"), execution.get("status")) or "Working"
@@ -7047,16 +7174,20 @@ def _build_execution_feed_messages(state: dict[str, Any]) -> list[dict[str, str]
             or "Circular self-wait removed. The next bounded implementation slice has not been dispatched through execute-chat-task into scripts/engines/LocalExecutionEngine.ps1::Invoke-LocalExecutionEngine."
         )
 
-    if circular_block_converted and binding_status == "missing":
-        live_line = f"TOD is blocked: missing local executor binding {binding_target}."
+    truth_action = _compact_text(truth.get("current_action"), 220)
+    truth_blocker = _compact_text(truth.get("blocker"), 220)
+    truth_next = _compact_text(truth.get("next_action"), 220)
+    truth_label = _compact_text(truth.get("status_label"), 80) or activity_label
+    if bool(truth.get("blocked")):
+        live_line = f"TOD status: {truth_label}. Blocker: {truth_blocker or wait_target_text}."
     elif live_status == "idle":
-        live_line = "TOD is idle: no eligible work selected."
-    elif live_status == "blocked":
-        live_line = f"TOD is blocked: waiting on {wait_target_text}."
+        live_line = f"TOD status: {truth_label}. No eligible active work is published."
     elif live_status == "complete":
-        live_line = f"TOD is complete: {title}."
+        live_line = f"TOD status: {truth_label}. Latest completed slice: {title}."
     else:
-        live_line = f"TOD is executing: {file_focus or current_action or title}."
+        live_line = f"TOD status: {truth_label}. Current action: {truth_action or file_focus or current_action or title}."
+    if truth_next and live_status != "complete":
+        live_line = f"{live_line}\nNext: {truth_next}."
     if updated_age:
         live_line = f"{live_line}\nLast heartbeat: {updated_age}."
 
@@ -7395,6 +7526,7 @@ def _build_chat_payload(session_key: str, messages: list[dict[str, Any]], state:
     pending_progress = list(session_payload.get("pending_progress") or [])
     pending_count = len(pending_progress)
     execution = state.get("execution") if isinstance(state.get("execution"), dict) else {}
+    status_truth = state.get("tod_status_truth") if isinstance(state.get("tod_status_truth"), dict) else _build_tod_status_truth_object(state)
     execution_feed_messages = _build_execution_feed_messages(state) if not direct_chat_surface else []
     execution_updated_at = str(execution.get("updated_at") or "").strip()
     display_messages = list(messages)
@@ -7452,9 +7584,16 @@ def _build_chat_payload(session_key: str, messages: list[dict[str, Any]], state:
         activity_label = "Replied"
         activity_summary = "TOD has posted the latest reply for this session."
     if not messages and execution_feed_messages and isinstance(execution, dict) and execution.get("available"):
-        activity_state = str(execution.get("activity_state") or activity_state).strip() or activity_state
-        activity_label = str(execution.get("activity_label") or activity_label).strip() or activity_label
-        activity_summary = str(execution.get("activity_summary") or execution.get("wait_reason") or activity_summary).strip() or activity_summary
+        activity_state = str(status_truth.get("status_code") or execution.get("activity_state") or activity_state).strip() or activity_state
+        activity_label = str(status_truth.get("status_label") or execution.get("activity_label") or activity_label).strip() or activity_label
+        activity_summary = str(
+            status_truth.get("blocker")
+            or status_truth.get("current_action")
+            or status_truth.get("next_action")
+            or execution.get("activity_summary")
+            or execution.get("wait_reason")
+            or activity_summary
+        ).strip() or activity_summary
     return {
         "session": {
             "session_key": _sanitize_session_key(session_key),
@@ -7475,6 +7614,7 @@ def _build_chat_payload(session_key: str, messages: list[dict[str, Any]], state:
         "state_marker": _chat_state_marker(state),
         "status": status,
         "quick_facts": quick_facts,
+        "tod_status_truth": status_truth,
         "visitor": {
             "name": visitor_name,
             "memory_summary": _pick_first_text(
@@ -8302,7 +8442,10 @@ def _build_tod_console_state() -> dict[str, Any]:
     execution_status["planner_state"] = planner_state
 
     operator_state = {
+        "status": {"code": status_code, "label": status_label, "headline": headline, "summary": summary},
+        "quick_facts": quick_facts,
         "execution": execution_status,
+        "training_status": training_status,
         "shared_truth": shared_truth_payload,
         "source_paths": {
             "active_objective": active_objective_path,
@@ -8331,9 +8474,13 @@ def _build_tod_console_state() -> dict[str, Any]:
             )
             if not str(execution_status.get("next_step") or "").strip():
                 execution_status["next_step"] = str(execution_live_state.get("next_to_progress") or "").strip()
+    status_truth = _build_tod_status_truth_object(operator_state)
+    execution_status["status_truth"] = status_truth
+    operator_state["tod_status_truth"] = status_truth
     objective_cards = _build_objective_cards(
         {
             "execution": execution_status,
+            "tod_status_truth": status_truth,
             "shared_truth": shared_truth_payload,
             "status": {"summary": summary, "label": status_label},
             "objective_alignment": {
@@ -8422,6 +8569,7 @@ def _build_tod_console_state() -> dict[str, Any]:
         },
         "quick_facts": quick_facts,
         "training_status": training_status,
+        "tod_status_truth": status_truth,
         "execution": execution_status,
         "shared_truth": shared_truth_payload,
         "objective_cards": objective_cards,
