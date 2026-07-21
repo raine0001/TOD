@@ -105,6 +105,34 @@
       ],
       "execution_authority": "canonical",
       "enforcement_level": "block_stale_completion_claims"
+    },
+    {
+      "canonical_id": "tod-objective-record-auditor-proof-extension-v1",
+      "domain": "TOD objective lifecycle and execution proof",
+      "title": "TOD objective record extension on existing MIM/TOD foundation",
+      "summary": "TOD must use the existing canonical objective, execution truth, material proof, and freshness provenance surfaces for objective lifecycle state. TOD may add execution-perspective fields and Auditor proof links, but it must not create a second competing objective dossier system.",
+      "authoritative_artifacts": [
+        "runtime/shared/MIM_TOD_OBJECTIVE_INDEX.latest.json",
+        "runtime/shared/MIM_TOD_MANAGED_OBJECTIVES.latest.json",
+        "runtime/shared/TOD_ACTIVE_OBJECTIVE.latest.json",
+        "runtime/shared/TOD_ACTIVE_TASK.latest.json",
+        "runtime/shared/TOD_EXECUTION_TRUTH.latest.json",
+        "runtime/shared/TOD_EXECUTION_RESULT.latest.json",
+        "runtime/shared/TOD_MATERIAL_IMPLEMENTATION_PROOF_POLICY.latest.json",
+        "runtime/shared/MIM_TOD_FRESHNESS_PROVENANCE_POLICY.latest.json"
+      ],
+      "canonical_routes": [
+        "/studio/tod",
+        "/studio/auditor"
+      ],
+      "supersedes": [
+        "tod-parallel-objective-dossier-system",
+        "chat-claim-as-objective-truth",
+        "latest-artifact-only-completion-without-auditor-proof",
+        "tod-completion-without-attributed-execution-evidence"
+      ],
+      "execution_authority": "canonical",
+      "enforcement_level": "block_noncanonical_competitors"
     }
   ],
   "supersession_records": [
@@ -136,6 +164,18 @@
       "superseded_id": "fresh-wrapper-over-stale-execution",
       "superseded_by": "mim-tod-freshness-provenance-trust-v1",
       "reason": "Fresh latest artifacts must not promote stale source evidence.",
+      "execution_authority": "revoked"
+    },
+    {
+      "superseded_id": "tod-parallel-objective-dossier-system",
+      "superseded_by": "tod-objective-record-auditor-proof-extension-v1",
+      "reason": "TOD should extend the existing canonical MIM/TOD objective and execution-truth surfaces, not create a second lifecycle record that can drift from MIM and Auditor.",
+      "execution_authority": "revoked"
+    },
+    {
+      "superseded_id": "chat-claim-as-objective-truth",
+      "superseded_by": "tod-objective-record-auditor-proof-extension-v1",
+      "reason": "TOD chat replies may summarize state, but objective lifecycle truth must come from canonical objective, execution truth, material proof, and Auditor evidence.",
       "execution_authority": "revoked"
     }
   ]
