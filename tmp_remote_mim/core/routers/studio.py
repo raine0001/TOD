@@ -1592,6 +1592,11 @@ def _studio_mim_body() -> str:
       .mim-message.user {{ align-self: flex-end; background: #263241; color: var(--text); border-bottom-right-radius: 6px; }}
       .mim-message.mim {{ align-self: flex-start; background: transparent; border-color: rgba(38,51,68,.75); color: var(--text); border-bottom-left-radius: 6px; }}
       .mim-message.system {{ align-self: center; max-width: min(760px, 94%); background: rgba(255,209,102,.08); border-color: rgba(255,209,102,.24); color: var(--soft); border-radius: 10px; }}
+      .mim-message-text {{ white-space: pre-wrap; overflow-wrap: anywhere; }}
+      .mim-message-tools {{ display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 10px; opacity: .76; }}
+      .mim-message:hover .mim-message-tools, .mim-message-tools:focus-within {{ opacity: 1; }}
+      .mim-tool-button {{ width: 28px; height: 28px; border-radius: 999px; border: 1px solid rgba(159,176,196,.25); background: rgba(21,31,44,.66); color: var(--soft); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; font: inherit; font-size: 13px; line-height: 1; }}
+      .mim-tool-button:hover {{ border-color: rgba(110,231,216,.62); color: var(--text); background: rgba(31,45,62,.82); }}
       .mim-composer-wrap {{ padding: 12px clamp(14px, 5vw, 72px) 16px; border-top: 1px solid var(--line); background: rgba(7,11,18,.96); }}
       .mim-file-drop {{ border: 1px dashed rgba(110,231,216,.32); border-radius: 10px; padding: 10px 12px; color: var(--muted); background: rgba(5,13,20,.76); font-size: 12px; margin-bottom: 10px; }}
       .mim-file-drop[hidden] {{ display: none; }}
@@ -1792,15 +1797,35 @@ def _studio_mim_body() -> str:
           item.querySelector('span').textContent = (lastUser && lastUser.text) || (lastAny && lastAny.text) || 'Current conversation';
           threadList.appendChild(item);
         }}
+        function mimMessageTools(index, role) {{
+          const tools = [
+            ['copy', '&#x2398;', 'Copy'],
+            ['retry', '&#x21bb;', 'Retry'],
+            ['queue', '&#x2295;', 'Queue'],
+            ['steer', '&#x27a4;', 'Steer'],
+            ['inspect', '&#x2315;', 'Inspect'],
+            ['evidence', '&#x25c9;', 'Evidence'],
+            ['share', '&#x21e7;', 'Share'],
+            ['create-objective', '&#x2726;', 'Create objective']
+          ];
+          return '<div class="mim-message-tools" data-message-index="' + index + '" data-role="' + escapeHtml(role) + '">' +
+            tools.map((tool) => '<button type="button" class="mim-tool-button" data-tool="' + escapeHtml(tool[0]) + '" title="' + escapeHtml(tool[2]) + '" aria-label="' + escapeHtml(tool[2]) + '">' + tool[1] + '</button>').join('') +
+            '</div>';
+        }}
         function renderMessages() {{
           if (!scroll) return;
           scroll.innerHTML = '';
           const visible = messages.length ? messages : [{{ role: 'mim', text: 'Hi Dave. I am here with the current Studio context. What should we look at first?', at: nowIso() }}];
-          visible.forEach((message) => {{
+          visible.forEach((message, index) => {{
             const node = document.createElement('div');
             const role = ['user', 'mim', 'system'].includes(message.role) ? message.role : 'mim';
             node.className = 'mim-message ' + role;
-            node.textContent = String(message.text || '');
+            node.dataset.messageIndex = String(index);
+            const textNode = document.createElement('div');
+            textNode.className = 'mim-message-text';
+            textNode.textContent = String(message.text || '');
+            node.appendChild(textNode);
+            node.insertAdjacentHTML('beforeend', mimMessageTools(index, role));
             scroll.appendChild(node);
           }});
           scroll.scrollTop = scroll.scrollHeight;
@@ -1822,6 +1847,40 @@ def _studio_mim_body() -> str:
           }}
           appendMessage('mim', text);
         }}
+        function setComposerText(value) {{
+          if (!input) return;
+          input.value = String(value || '');
+          autoSize();
+          input.focus();
+        }}
+        scroll?.addEventListener('click', (event) => {{
+          const button = event.target && event.target.closest ? event.target.closest('.mim-tool-button') : null;
+          if (!button) return;
+          const tools = button.closest('.mim-message-tools');
+          const index = Number(tools && tools.dataset ? tools.dataset.messageIndex : -1);
+          const message = messages[index] || {{}};
+          const text = String(message.text || '').trim();
+          const tool = String(button.dataset.tool || '');
+          if (tool === 'copy') {{
+            navigator.clipboard?.writeText(text);
+            button.innerHTML = '&#x2713;';
+            setTimeout(() => {{ button.innerHTML = '&#x2398;'; }}, 900);
+            return;
+          }}
+          if (tool === 'retry') {{
+            setComposerText(text);
+            return;
+          }}
+          const prompts = {{
+            queue: 'Queue this as a bounded MIM/TOD follow-up with evidence requirements: ',
+            steer: 'Steer MIM on this reply and preserve the current conversation context: ',
+            inspect: 'Inspect the reasoning, context, and source evidence behind this MIM reply: ',
+            evidence: 'Show the evidence and active state behind this MIM reply: ',
+            share: 'Prepare a concise shareable summary of this MIM reply: ',
+            'create-objective': 'Create a bounded objective from this MIM reply: '
+          }};
+          if (prompts[tool]) setComposerText(prompts[tool] + text);
+        }});
         async function hydrate() {{
           messages = loadLocal();
           renderMessages();

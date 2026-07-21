@@ -1038,6 +1038,16 @@ class TodUiStateClassificationTests(unittest.TestCase):
         self.assertNotIn('id="todLifecycle"', source)
         self.assertNotIn("tod-phase-track", source)
 
+    def test_studio_mim_body_keeps_message_tool_tray(self) -> None:
+        source = STUDIO_ROUTER_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("mim-message-tools", source)
+        self.assertIn("mim-tool-button", source)
+        self.assertIn("mimMessageTools", source)
+        self.assertIn("Create objective", source)
+        self.assertIn("Queue this as a bounded MIM/TOD follow-up", source)
+        self.assertIn("Inspect the reasoning, context, and source evidence", source)
+
     def test_tod_console_promotes_operator_workspace_in_studio_embed(self) -> None:
         request = types.SimpleNamespace(query_params={})
         html = asyncio.run(self.tod_ui.tod_console(request))
