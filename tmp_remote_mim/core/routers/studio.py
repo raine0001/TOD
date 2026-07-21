@@ -1250,6 +1250,20 @@ def _studio_mim_live_feed_state() -> dict[str, Any]:
     request_focus = _studio_mim_request_focus_state()
     hourly_reflection = _load_json("MIM_TOD_HOURLY_REFLECTION.latest.json")
     primary = conversation_focus or request_focus or {}
+    primary_objective_id = _first_text(primary.get("objective_id"), default="")
+    live_artifact_objective_ids = {
+        _first_text(request_focus.get("objective_id"), default=""),
+        _first_text(execution_result.get("objective_id"), default=""),
+        _first_text(active_lane.get("objective_id"), default=""),
+        _first_text(activity.get("objective_id"), default=""),
+    }
+    live_artifact_objective_ids.discard("")
+    conversation_focus_unverified = (
+        bool(conversation_focus)
+        and primary is conversation_focus
+        and bool(primary_objective_id)
+        and primary_objective_id not in live_artifact_objective_ids
+    )
     event = _first_text(
         primary.get("source"),
         execution_result.get("reason_code"),
@@ -1310,6 +1324,19 @@ def _studio_mim_live_feed_state() -> dict[str, Any]:
             state = "working"
             label = _first_text(primary.get("label"), default="MIM focus")
             plain_meaning = _first_text(primary.get("plain_meaning"), default=plain_meaning)
+    if conversation_focus_unverified:
+        state = "waiting"
+        label = "MIM focus unverified"
+        raw_status = "unverified"
+        summary = (
+            f"MIM discussed {primary_objective_id}, but no matching live request, execution result, "
+            "or activity artifact is visible yet."
+        )
+        plain_meaning = (
+            f"Latest chat mentions {primary_objective_id}. Live proof missing: no current MIM/TOD "
+            "request, active lane, execution result, or activity stream references that objective. "
+            "Next evidence should be a fresh task/result/status artifact or an explicit blocker."
+        )
     timestamp = _first_text(
         primary.get("updated_at"),
         execution_result.get("generated_at"),
@@ -1343,7 +1370,8 @@ def _studio_mim_live_feed_state() -> dict[str, Any]:
         if task_id:
             parts.append(f"Task: {task_id}")
         parts.append(f"Now: {summary}")
-        plain_meaning = _first_text(primary.get("plain_meaning"), default=" | ".join(parts))
+        if not conversation_focus_unverified:
+            plain_meaning = _first_text(primary.get("plain_meaning"), default=" | ".join(parts))
 
     def activity_entry(label: str, payload: dict[str, Any], text: str, *, state_value: str = "") -> dict[str, str] | None:
         if not isinstance(payload, dict) or not text:

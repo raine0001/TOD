@@ -997,7 +997,7 @@ class StudioTrainingChatTest(unittest.TestCase):
         self.assertGreaterEqual(len(live["recent_events"]), 3)
         self.assertEqual(live["recent_events"][0]["label"], "Execution result")
 
-    def test_studio_mim_live_feed_prioritizes_current_mim_conversation_objective(self):
+    def test_studio_mim_live_feed_marks_conversation_objective_without_artifact_unverified(self):
         studio = _import_studio_module()
 
         thread_payload = {
@@ -1046,9 +1046,12 @@ class StudioTrainingChatTest(unittest.TestCase):
         ), patch.object(studio, "_load_json_path", return_value={}):
             live = studio._studio_mim_live_feed_state()
 
-        self.assertEqual(live["label"], "MIM focus")
+        self.assertEqual(live["state"], "waiting")
+        self.assertEqual(live["label"], "MIM focus unverified")
+        self.assertEqual(live["status"], "unverified")
         self.assertEqual(live["objective_id"], "MIM-CONVERSATIONAL-LEARNING-AND-REFLECTION-V1")
         self.assertNotEqual(live["objective_id"], "UNRELATED-TOD-OBJECTIVE-V1")
+        self.assertIn("Live proof missing", live["plain_meaning"])
         self.assertIn("MIM-CONVERSATIONAL-LEARNING-AND-REFLECTION-V1", live["plain_meaning"])
         self.assertEqual(live["recent_events"][0]["label"], "MIM conversation focus")
         self.assertTrue(any(item["label"] == "Execution result" for item in live["recent_events"]))
