@@ -229,4 +229,119 @@ No code changes.
         Remove-Item -Path $inputPath -Force -ErrorAction SilentlyContinue
         Remove-Item -Path $outputPath -Force -ErrorAction SilentlyContinue
     }
+
+    It 'classifies saved route patch evidence without modifying product source' {
+        $inputRel = ('runtime_remote_training/cleanup_holds/route-authority-{0}.patch' -f [guid]::NewGuid().ToString('N'))
+        $outputRel = ('runtime_remote_training/read_only_audit_artifacts/TOD_ROUTE_PATCH_EVIDENCE_TEST_{0}.json' -f [guid]::NewGuid().ToString('N'))
+        $inputPath = Join-Path $repoRoot ($inputRel -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        $outputPath = Join-Path $repoRoot ($outputRel -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+
+        $patch = @'
+diff --git a/tmp_remote_mim/core/routers/studio.py b/tmp_remote_mim/core/routers/studio.py
+@@
++def _studio_cognitive_authority_reply(message):
++    return "My first working hypothesis about this request is that the first visible explanation may not be the deepest capability gap."
++    return "Recommended action: Select and execute the next bounded action."
++    return "Dave needed: no."
+diff --git a/tmp_remote_mim/core/routers/tod_ui.py b/tmp_remote_mim/core/routers/tod_ui.py
+@@
++if "Codex disappeared" in message:
++    return "TOD is blocked."
+'@
+        New-Item -ItemType Directory -Path (Split-Path -Parent $inputPath) -Force | Out-Null
+        [System.IO.File]::WriteAllText($inputPath, $patch, (New-Object System.Text.UTF8Encoding($false)))
+
+        $promptText = @"
+Input Patch: $inputRel
+Output artifact: $outputRel
+Audit Subject: TOD route experiment authority classification.
+Classify patch evidence for route-level hardcoded response authority, process support, and learned-capability candidates.
+Use the read-only assessment patch evidence artifact lane.
+No source code changes.
+"@
+        $promptPath = New-TestPromptFile -Content $promptText
+        $context = [pscustomobject]@{
+            task_id = 'TSK-ROUTE-PATCH-EVIDENCE-TEST'
+            objective_id = 'TOD-ROUTE-EXPERIMENT-AUTHORITY-CLASSIFICATION-V1'
+            title = 'Route patch evidence authority classification'
+            scope = $promptText
+            prompt_path = $promptPath
+            task_category = 'read_only_assessment'
+            allowed_files = @()
+            validation_commands = @()
+            metadata = @{ task_category = 'read_only_assessment' }
+        }
+
+        try {
+            $result = Invoke-LocalExecutionEngine -Context $context
+            $artifact = Get-Content -Path $outputPath -Raw | ConvertFrom-Json
+
+            [string]$result.status | Should Be 'completed'
+            [string]$artifact.artifact_type | Should Be 'tod_patch_evidence_authority_classification'
+            [string]$artifact.task_mode | Should Be 'read_only_assessment'
+            [bool]$artifact.no_code_changes | Should Be $true
+            [bool]$artifact.no_source_code_modified_by_assessment | Should Be $true
+            @($artifact.inspected_files) -contains $inputRel | Should Be $true
+            [int]$artifact.patch_summary.route_file_count | Should BeGreaterThan 0
+            @($artifact.signals | Where-Object { [string]$_.signal -eq 'visible_reply_authority' }).Count | Should BeGreaterThan 0
+            @($artifact.signals | Where-Object { [string]$_.signal -eq 'operator_contract_injection' }).Count | Should BeGreaterThan 0
+            @($artifact.signals | Where-Object { [string]$_.signal -eq 'tod_phrase_patch' }).Count | Should BeGreaterThan 0
+            @($result.files_changed) -contains $outputRel | Should Be $true
+        }
+        finally {
+            Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path $inputPath -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path $outputPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'classifies patch evidence when the chat wrapper leaves task_category as chat_execution' {
+        $inputRel = ('runtime_remote_training/cleanup_holds/route-authority-chat-wrapper-{0}.patch' -f [guid]::NewGuid().ToString('N'))
+        $outputRel = ('runtime_remote_training/read_only_audit_artifacts/TOD_ROUTE_PATCH_CHAT_WRAPPER_TEST_{0}.json' -f [guid]::NewGuid().ToString('N'))
+        $inputPath = Join-Path $repoRoot ($inputRel -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        $outputPath = Join-Path $repoRoot ($outputRel -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+
+        $patch = @'
+diff --git a/tmp_remote_mim/core/routers/studio.py b/tmp_remote_mim/core/routers/studio.py
+@@
++def _studio_cognitive_authority_reply(message):
++    return "I do not have a specialized handler for this Studio MIM request yet, so I need to provide a useful reply."
+'@
+        New-Item -ItemType Directory -Path (Split-Path -Parent $inputPath) -Force | Out-Null
+        [System.IO.File]::WriteAllText($inputPath, $patch, (New-Object System.Text.UTF8Encoding($false)))
+
+        $promptText = @"
+Input Patch: $inputRel
+Output artifact: $outputRel
+Classify patch evidence for route-level hardcoded response authority. Read-only assessment. No source code changes.
+"@
+        $promptPath = New-TestPromptFile -Content $promptText
+        $context = [pscustomobject]@{
+            task_id = 'TSK-ROUTE-PATCH-EVIDENCE-CHAT-WRAPPER-TEST'
+            objective_id = 'TOD-ROUTE-EXPERIMENT-AUTHORITY-CLASSIFICATION-V1'
+            title = 'Route patch evidence wrapped as chat execution'
+            scope = $promptText
+            prompt_path = $promptPath
+            task_category = 'chat_execution'
+            allowed_files = @()
+            validation_commands = @()
+            metadata = @{ task_category = 'chat_execution'; task_type = 'read_only_assessment' }
+        }
+
+        try {
+            $result = Invoke-LocalExecutionEngine -Context $context
+            $artifact = Get-Content -Path $outputPath -Raw | ConvertFrom-Json
+
+            [string]$result.status | Should Be 'completed'
+            [string]$artifact.artifact_type | Should Be 'tod_patch_evidence_authority_classification'
+            @($artifact.signals | Where-Object { [string]$_.signal -eq 'visible_reply_authority' }).Count | Should BeGreaterThan 0
+            [bool]$artifact.no_code_changes | Should Be $true
+            @($result.files_changed) -contains $outputRel | Should Be $true
+        }
+        finally {
+            Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path $inputPath -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path $outputPath -Force -ErrorAction SilentlyContinue
+        }
+    }
 }

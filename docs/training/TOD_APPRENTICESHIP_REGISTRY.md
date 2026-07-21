@@ -57,13 +57,13 @@ Capability: TOD must safely ingest preserved patch evidence for read-only classi
 
 Current Apprentice: TOD
 
-Progress: `borrowed`; Codex identified the safe-root blocker and named the smaller rung. No patch-ingestion capability has been implemented yet.
+Progress: `scaffolded_pass`; Codex repaired the local executor/control-plane rung after TOD's blocked attempt. TOD then completed R6 through the repaired read-only patch evidence lane and repeated R7 without additional code changes, publishing `runtime_remote_training/read_only_audit_artifacts/TOD_ROUTE_EXPERIMENT_PATCH_EVIDENCE_R6.latest.json` and `runtime_remote_training/read_only_audit_artifacts/TOD_ROUTE_EXPERIMENT_PATCH_EVIDENCE_R7.latest.json`.
 
-Proficiency: `observed`; TOD produced the blocker through R3, but did not yet replan to an allowed evidence shape.
+Proficiency: `guided`; TOD produced the blocker through R3/R5, completed R6, and repeated R7 after the executor learned a safe read-only patch evidence shape. This is not independent yet because Codex implemented the lane and precedence repair.
 
-Independent Demonstration: `pending`; TOD must either materialize an allowed read-only JSON evidence object from a saved patch or add a read-only-only patch evidence lane, then run a fresh classification that publishes JSON/MD artifacts without source-code mutation.
+Independent Demonstration: `pending`; TOD must select or register a fresh saved-patch evidence target, run the read-only patch evidence lane without Codex field scaffolding, publish JSON/MD artifacts, and explain which behavior may return only through learned capability paths. Current limitation: the allowed patch evidence roots contain only one saved patch target, so a true fresh analogous case is pending the next route/authority experiment capture.
 
-Freeze: open; no learned capability exists yet for patch evidence ingestion.
+Freeze: partial; the borrowed control-plane lesson is captured in `TOD_ROUTE_EXPERIMENT_AUTHORITY_CLASSIFICATION_V1.md`. A full learned capability freeze remains open until the fresh independent demonstration passes.
 
 Retirement: open.
 

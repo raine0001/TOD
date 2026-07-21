@@ -106,7 +106,7 @@ Run the response-authority trace suite and verify that no route/template becomes
 
 ## Current Verdict
 
-TOD borrowed skill status: `observed`.
+TOD borrowed skill status: `scaffolded_pass`.
 
 The saved patch proves useful instincts, but not safe implementation. It correctly points toward active conversation state, observational relationship memory, and response-authority auditing. It also repeats the exact failure pattern Dave is trying to eliminate: route-level cognition and visible hardcoded answers.
 
@@ -122,31 +122,55 @@ Observed result:
 - Codex repaired the control plane after TOD's blocked attempt by preserving `-Type` as `task_mode` before intake arbitration.
 - Regression coverage now proves a read-only `execute-chat-task` request can enter intake without `target_file`, `edit_mode`, or bounded-edit fields.
 - R3 preserved `task_mode=read_only_assessment` and `bounded_edit_mode=false`, but local execution still blocked because the saved `.patch` evidence under `runtime_remote_training/cleanup_holds/` is outside the bounded safe roots.
-- The local engine currently has read-only audit support for JSON evidence artifacts under `runtime_remote_training/read_only_audit_artifacts/`, but it cannot yet consume a saved `.patch` as read-only evidence for classification.
+- The local engine previously had read-only audit support for JSON evidence artifacts under `runtime_remote_training/read_only_audit_artifacts/`, but could not consume a saved `.patch` as read-only evidence for classification.
+- Codex repaired that borrowed control-plane rung after TOD's blocked attempt by adding a read-only-only patch evidence lane. The lane accepts `.patch` input only from explicit safe evidence roots, publishes JSON artifacts only under `runtime_remote_training/read_only_audit_artifacts/`, and asserts that no product source changes are made by the assessment.
+- R4/R5 proved the remaining shape issue: the task still arrived with a `chat_execution` wrapper, so the local engine fell back to bounded-edit materialization.
+- Codex repaired the precedence and matcher rules so explicit read-only task intent outranks a generic chat wrapper when a safe patch evidence input/output contract is present.
+- R6 then completed through TOD's local execution lane and published `runtime_remote_training/read_only_audit_artifacts/TOD_ROUTE_EXPERIMENT_PATCH_EVIDENCE_R6.latest.json`.
+- R7 repeated the same read-only classification through TOD's local execution lane without additional code changes and published `runtime_remote_training/read_only_audit_artifacts/TOD_ROUTE_EXPERIMENT_PATCH_EVIDENCE_R7.latest.json`.
+
+R6/R7 evidence:
+
+- Artifact type: `tod_patch_evidence_authority_classification`
+- Tasks: `TSK-ROUTE-EXPERIMENT-PATCH-EVIDENCE-R6`, `TSK-ROUTE-EXPERIMENT-PATCH-EVIDENCE-R7`
+- Input patch: `runtime_remote_training/cleanup_holds/20260721_remaining_dirty_mim_tod_route_experiments.patch`
+- Route files classified: 2
+- Classification counts: `hardcoded_response_authority_risk=1`, `operator_contract_authority_risk=1`, `reusable_service_candidate=2`, `process_support_candidate=1`, `phrase_patch_rejected=1`
+- Signals detected: `visible_reply_authority`, `operator_contract_injection`, `active_conversation_state`, `observational_relationship_memory`, `response_authority_audit`, `tod_phrase_patch`
+- No source code modified by assessment: true
+- Latest execution result advanced to R7 after background execution completed.
 
 Validation:
 
 - `python -m py_compile scripts/check_remote_preactive_trace_readiness.py scripts/generate_remote_preactive_field_trace_package.py` passed.
 - `Invoke-Pester tests/TOD.IntakeArbitration.Tests.ps1` passed the new read-only task preservation test.
 - Full Pester result is currently 16 passed / 1 failed. The remaining failure is an existing admin-repair lane expectation, not this read-only preservation repair.
+- `Invoke-Pester -Script tests\TOD.ReadOnlyAuditRegression.Tests.ps1` passed with the read-only patch evidence lane.
+- `Invoke-Pester -Script tests\TOD.BoundedEditMaterialization.Tests.ps1` passed with explicit read-only mode outranking generic `chat_execution`.
 
 Borrowed capability created:
 
 - `APP-TOD-033: Direct Chat Read-Only Task Mode Preservation`
 
-New training debt discovered:
+Training debt advanced:
 
 - `APP-TOD-034: Patch Evidence Ingestion For Read-Only Audits`
 
-TOD independent status remains false. The control plane can now carry read-only work correctly, but TOD still needs to independently run this classification from the saved patch and publish its own artifacts without Codex-provided buckets.
+TOD independent status remains false. TOD completed R6 and repeated R7 after Codex repaired the executor/control-plane rung, so this is a scaffolded/repeat pass rather than a retired capability.
 
-The next smallest rung is not to broaden the safe roots blindly. TOD should learn to convert preserved patch evidence into an allowed read-only evidence object, or add a read-only-only patch evidence lane with explicit no-write validation.
+The next smallest rung is a fresh analogous task where TOD selects or registers a patch-evidence target, runs the read-only evidence lane, publishes classification evidence, and explains which behavior may return only through learned capability paths.
+
+Fresh-target limitation:
+
+- Current allowed patch evidence roots contain only one saved patch target.
+- A true independent fresh-patch demonstration is therefore blocked on the existence of a second saved route/authority experiment patch or a future dirty-worktree capture.
+- This is not an external blocker. The next time a route experiment or hardcoded-response cleanup patch is captured, TOD should automatically run this lane without Codex changing executor code.
 
 ## Next Automatic Action
 
-TOD should complete Rung 1 independently from the saved patch and publish:
+TOD should repeat Rung 1 on a fresh saved-patch target and publish:
 
-- `runtime_remote_training/read_only_audit_artifacts/TOD_ROUTE_EXPERIMENT_AUTHORITY_CLASSIFICATION_V1.latest.json`
+- a new `runtime_remote_training/read_only_audit_artifacts/*.latest.json` classification artifact
 - `docs/training/hard-route-audit/TOD_ROUTE_EXPERIMENT_AUTHORITY_CLASSIFICATION_V1.md`
 
-Then TOD should start Rung 2 on the response-authority audit service packaging path.
+Then TOD should start Rung 2 on the response-authority audit service packaging path. Retirement requires a fresh analogous pass without Codex field scaffolding.

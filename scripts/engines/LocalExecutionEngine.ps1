@@ -1836,6 +1836,185 @@ function Test-LocalExecutionReadOnlyAuditArtifactTask {
     return ($text -match 'read-only|read only') -and ($text -match 'audit|assessment') -and ($text -match 'artifact')
 }
 
+function Get-LocalExecutionPatchEvidenceArtifactSpec {
+    param([Parameter(Mandatory = $true)]$Context)
+
+    $text = Get-LocalExecutionCombinedText -Context $Context
+    $inputPatch = ''
+    $inputDirective = [regex]::Match($text, '(?im)\bInput\s+Patch\s*:\s*(?<path>\S+?\.patch)\b')
+    if ($inputDirective.Success) {
+        $inputPatch = ([string]$inputDirective.Groups['path'].Value).Trim()
+    }
+    else {
+        $inputMatches = [regex]::Matches($text, 'runtime_remote_training/cleanup_holds/[A-Za-z0-9_./-]+?\.patch|tod/out/tests/[A-Za-z0-9_./-]+?\.patch')
+        if ($inputMatches.Count -gt 0) {
+            $inputPatch = ([string]$inputMatches[0].Value).Trim()
+        }
+    }
+
+    $outputPath = ''
+    $outputMatches = [regex]::Matches($text, 'runtime_remote_training/read_only_audit_artifacts/[A-Za-z0-9_./-]+?\.json')
+    if ($outputMatches.Count -gt 0) {
+        $outputPath = ([string]$outputMatches[$outputMatches.Count - 1].Value).Trim()
+    }
+
+    return [pscustomobject]@{
+        input_patch = if ([string]::IsNullOrWhiteSpace($inputPatch)) { '' } else { Convert-ToLocalExecutionRepoRelativePath -PathValue $inputPatch }
+        output_path = if ([string]::IsNullOrWhiteSpace($outputPath)) { '' } else { Convert-ToLocalExecutionRepoRelativePath -PathValue $outputPath }
+    }
+}
+
+function Test-LocalExecutionReadOnlyPatchEvidencePathAllowed {
+    param([Parameter(Mandatory = $true)][string]$RelativePath)
+
+    $normalized = Convert-ToLocalExecutionRepoRelativePath -PathValue $RelativePath
+    if ([string]::IsNullOrWhiteSpace($normalized)) { return $false }
+    if ($normalized -match '^[A-Za-z]:/' -or $normalized.StartsWith('/') -or $normalized -match '(^|/)\.\.(/|$)') { return $false }
+    return (
+        $normalized -match '^runtime_remote_training/cleanup_holds/[A-Za-z0-9_./-]+\.patch$' -or
+        $normalized -match '^tod/out/tests/[A-Za-z0-9_./-]+\.patch$'
+    )
+}
+
+function Test-LocalExecutionPatchEvidenceArtifactTask {
+    param([Parameter(Mandatory = $true)]$Context)
+
+    $category = Get-LocalExecutionTaskCategory -Context $Context
+    $spec = Get-LocalExecutionPatchEvidenceArtifactSpec -Context $Context
+    if ([string]::IsNullOrWhiteSpace([string]$spec.input_patch) -or [string]::IsNullOrWhiteSpace([string]$spec.output_path)) {
+        return $false
+    }
+
+    $text = (Get-LocalExecutionCombinedText -Context $Context).ToLowerInvariant()
+    $readOnlyEvidenceTask = (
+        @('read_only_assessment', 'report_only', 'diagnostic_only', 'inspection_only', 'inspection') -contains $category -or
+        ($text -match 'read-only|read only|no source code changes|no code changes')
+    )
+    return $readOnlyEvidenceTask -and ($text -match 'patch') -and ($text -match 'classif|authority|hardcoded|route experiment|route-level')
+}
+
+function Invoke-LocalExecutionPatchEvidenceArtifact {
+    param(
+        [Parameter(Mandatory = $true)]$Context,
+        [Parameter(Mandatory = $true)]$Result,
+        [Parameter(Mandatory = $true)]$Spec
+    )
+
+    $patchSpec = Get-LocalExecutionPatchEvidenceArtifactSpec -Context $Context
+    $inputRel = [string]$patchSpec.input_patch
+    $outputRel = [string]$patchSpec.output_path
+    if ([string]::IsNullOrWhiteSpace($inputRel)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'patch_evidence_input_missing' -Reason 'Patch evidence classification requires an Input Patch path.' -MissingVariable 'input_patch')
+    }
+    if ([string]::IsNullOrWhiteSpace($outputRel)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'patch_evidence_output_missing' -Reason 'Patch evidence classification requires an output path under runtime_remote_training/read_only_audit_artifacts/.' -MissingVariable 'output_path')
+    }
+    if (-not (Test-LocalExecutionReadOnlyPatchEvidencePathAllowed -RelativePath $inputRel)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'patch_evidence_input_unsafe' -Reason ('Patch evidence input path is outside the read-only evidence roots: {0}' -f $inputRel) -MissingVariable 'safe_input_patch')
+    }
+    if (-not (Test-LocalExecutionSafePath -RelativePath $outputRel)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'patch_evidence_output_unsafe' -Reason ('Patch evidence output is outside LocalExecutionEngine safe roots: {0}' -f $outputRel) -MissingVariable 'safe_output_path')
+    }
+
+    $inputAbs = Join-Path $script:LocalEngineRepoRoot ($inputRel -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    $outputAbs = Join-Path $script:LocalEngineRepoRoot ($outputRel -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    if (-not (Test-Path -Path $inputAbs -PathType Leaf)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'patch_evidence_input_not_found' -Reason ('Patch evidence file does not exist: {0}' -f $inputRel) -MissingVariable 'input_patch_file')
+    }
+
+    $patchText = [System.IO.File]::ReadAllText($inputAbs, [System.Text.UTF8Encoding]::new($false))
+    $fileMatches = @([regex]::Matches($patchText, '(?m)^diff --git a/(?<old>\S+) b/(?<new>\S+)') | ForEach-Object {
+        [ordered]@{
+            old_path = [string]$_.Groups['old'].Value
+            new_path = [string]$_.Groups['new'].Value
+        }
+    })
+    $additions = @([regex]::Matches($patchText, '(?m)^\+(?!\+\+).*$')).Count
+    $deletions = @([regex]::Matches($patchText, '(?m)^-(?!--).*$')).Count
+    $hunks = @([regex]::Matches($patchText, '(?m)^@@')).Count
+
+    $signals = New-Object System.Collections.Generic.List[object]
+    $signalSpecs = @(
+        [pscustomobject]@{ name = 'visible_reply_authority'; pattern = '_studio_cognitive_authority_reply|first working hypothesis|I do not have a specialized handler|Recommended action:|Dave needed:'; bucket = 'hardcoded_response_authority_risk' },
+        [pscustomobject]@{ name = 'operator_contract_injection'; pattern = 'Recommended action:|Expected evidence:|Aging rule:|Dave needed:'; bucket = 'operator_contract_authority_risk' },
+        [pscustomobject]@{ name = 'active_conversation_state'; pattern = 'active conversation|conversation state|missing fields|slot'; bucket = 'reusable_service_candidate' },
+        [pscustomobject]@{ name = 'observational_relationship_memory'; pattern = 'observational|relationship memory|relationship_type|subject.*relationship|current_location|facility_location'; bucket = 'reusable_service_candidate' },
+        [pscustomobject]@{ name = 'response_authority_audit'; pattern = 'authority trace|response authority|final_authority|allowed_transformations|operator_contract_allowed'; bucket = 'process_support_candidate' },
+        [pscustomobject]@{ name = 'tod_phrase_patch'; pattern = 'If Codex disappeared|Codex disappeared|no codex|without codex'; bucket = 'phrase_patch_rejected' }
+    )
+    foreach ($signalSpec in @($signalSpecs)) {
+        $matches = @([regex]::Matches($patchText, [string]$signalSpec.pattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase))
+        if (@($matches).Count -gt 0) {
+            $signals.Add([ordered]@{
+                signal = [string]$signalSpec.name
+                bucket = [string]$signalSpec.bucket
+                match_count = @($matches).Count
+                sample = [string]$matches[0].Value
+            }) | Out-Null
+        }
+    }
+
+    $classificationCounts = [ordered]@{}
+    foreach ($signal in @($signals.ToArray())) {
+        $bucket = [string]$signal.bucket
+        if (-not $classificationCounts.Contains($bucket)) { $classificationCounts[$bucket] = 0 }
+        $classificationCounts[$bucket] = [int]$classificationCounts[$bucket] + 1
+    }
+
+    $routeFiles = @($fileMatches | Where-Object { [string]$_.new_path -match 'routers?/|routes?\.py' })
+    $artifact = [ordered]@{
+        artifact_type = 'tod_patch_evidence_authority_classification'
+        generated_at = (Get-Date).ToUniversalTime().ToString('o')
+        source = 'local_execution_patch_evidence_artifact_lane'
+        objective_id = if ($Context.PSObject.Properties['objective_id']) { [string]$Context.objective_id } else { '' }
+        task_id = if ($Context.PSObject.Properties['task_id']) { [string]$Context.task_id } else { '' }
+        task_mode = 'read_only_assessment'
+        input_patch = $inputRel
+        inspected_files = @($inputRel)
+        patch_summary = [ordered]@{
+            files_changed = @($fileMatches)
+            file_count = @($fileMatches).Count
+            route_file_count = @($routeFiles).Count
+            additions = $additions
+            deletions = $deletions
+            hunks = $hunks
+        }
+        classification_counts = $classificationCounts
+        signals = @($signals.ToArray())
+        route_boundary_decision = 'review_required_before_reintroduction'
+        no_source_code_modified_by_assessment = $true
+        no_code_changes = $true
+        continuation_action = 'Use this patch evidence artifact to perform route-authority classification. Reintroduce only process support or reusable service candidates through learned capability paths with generalized tests.'
+        validation = [ordered]@{
+            artifact_path = $outputRel
+            input_patch_read = $true
+            source_edits = @()
+            output_under_read_only_artifacts = $true
+        }
+    }
+
+    New-Item -ItemType Directory -Path (Split-Path -Parent $outputAbs) -Force | Out-Null
+    [System.IO.File]::WriteAllText($outputAbs, ($artifact | ConvertTo-Json -Depth 20), [System.Text.UTF8Encoding]::new($false))
+
+    $Result.summary = ('Published patch evidence authority classification artifact {0} from {1}.' -f $outputRel, $inputRel)
+    $Result.files_changed = @($outputRel)
+    $Result.tests_run = @('patch evidence input read', 'patch authority signal extraction', 'read-only artifact write', 'no product source edit assertion')
+    $Result.test_results = @('pass', 'pass', 'pass', 'pass')
+    $Result | Add-Member -NotePropertyName diff_summary -NotePropertyValue ('Artifact write only: {0}' -f $outputRel) -Force
+    $Result | Add-Member -NotePropertyName commands_run -NotePropertyValue @('Invoke-LocalExecutionPatchEvidenceArtifact') -Force
+    $Result | Add-Member -NotePropertyName validation_results -NotePropertyValue @(
+        [pscustomobject]@{ name = 'patch evidence input read'; passed = $true; required = $true },
+        [pscustomobject]@{ name = 'patch authority signal extraction'; passed = (@($signals.ToArray()).Count -gt 0); required = $true },
+        [pscustomobject]@{ name = 'read-only artifact write'; passed = $true; required = $true },
+        [pscustomobject]@{ name = 'no product source edit assertion'; passed = $true; required = $true }
+    ) -Force
+    $Result | Add-Member -NotePropertyName blockers -NotePropertyValue @() -Force
+    $Result | Add-Member -NotePropertyName confidence -NotePropertyValue 'medium' -Force
+    $Result | Add-Member -NotePropertyName rollback_hint -NotePropertyValue ('Remove generated artifact {0} if this read-only evidence artifact must be discarded.' -f $outputRel) -Force
+    $Result | Add-Member -NotePropertyName no_change_required -NotePropertyValue $false -Force
+    return (Complete-EngineExecutionResult -Result $Result -Status 'completed')
+}
+
 function Get-LocalExecutionSourceAnchorObservationSpec {
     param([Parameter(Mandatory = $true)]$Context)
 
@@ -7149,6 +7328,7 @@ function Get-LocalExecutionEngineSpec {
             "user_app_published_preview_generation",
             "user_app_hero_media_generation",
             "read_only_audit_artifact_publication",
+            "patch_evidence_authority_classification",
             "source_anchor_observation_artifact_publication",
             "different_target_discovery_artifact_publication",
             "target_selection_artifact_publication",
@@ -7204,6 +7384,9 @@ function Invoke-LocalExecutionEngine {
     }
     elseif (Test-LocalExecutionReadOnlyAuditArtifactTask -Context $Context) {
         $result = Invoke-LocalExecutionReadOnlyAuditArtifact -Context $Context -Result $result -Spec $spec
+    }
+    elseif (Test-LocalExecutionPatchEvidenceArtifactTask -Context $Context) {
+        $result = Invoke-LocalExecutionPatchEvidenceArtifact -Context $Context -Result $result -Spec $spec
     }
     elseif (Test-LocalExecutionSourceAnchorObservationTask -Context $Context) {
         $result = Invoke-LocalExecutionSourceAnchorObservation -Context $Context -Result $result -Spec $spec

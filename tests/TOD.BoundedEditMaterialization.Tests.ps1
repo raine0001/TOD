@@ -717,6 +717,31 @@ Do not modify source.
         Test-TaskAllowsLocalExecutionWithoutMaterialization -Task $task -TaskCategory 'read_only_assessment' -TaskMaterialization $materialization | Should Be $true
     }
 
+    It 'lets explicit read-only task type outrank generic chat execution category' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-READONLY-CHAT-WRAPPED'
+            title = 'Classify saved route patch evidence'
+            type = 'read_only_assessment'
+            task_category = 'chat_execution'
+            scope = @'
+Input Patch: runtime_remote_training/cleanup_holds/20260721_remaining_dirty_mim_tod_route_experiments.patch
+Output artifact: runtime_remote_training/read_only_audit_artifacts/TOD_ROUTE_EXPERIMENT_PATCH_EVIDENCE_R4.latest.json
+Classify patch evidence for route-level hardcoded response authority and learned-capability candidates. Read-only assessment. No source code changes.
+'@
+        }
+        $materialization = [pscustomobject]@{
+            status = 'blocked'
+            reason_code = 'blocked_missing_bounded_edit_mode'
+            target_file_candidates = @(
+                'runtime_remote_training/cleanup_holds/20260721_remaining_dirty_mim_tod_route_experiments.patch',
+                'runtime_remote_training/read_only_audit_artifacts/TOD_ROUTE_EXPERIMENT_PATCH_EVIDENCE_R4.latest.json'
+            )
+        }
+
+        Resolve-TodTaskMode -Task $task | Should Be 'read_only_assessment'
+        Test-TaskAllowsLocalExecutionWithoutMaterialization -Task $task -TaskCategory 'chat_execution' -TaskMaterialization $materialization | Should Be $true
+    }
+
     It 'blocks abstract code changes with blocked_missing_bounded_edit_mode' {
         $task = [pscustomobject]@{
             id = 'TSK-MAT-BLOCKED'

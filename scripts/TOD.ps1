@@ -6287,6 +6287,12 @@ function Resolve-TodTaskMode {
     }
 
     foreach ($value in @($explicitValues.ToArray())) {
+        if ($value -in @('read_only_assessment', 'read_only_audit', 'capability_assessment', 'assessment', 'report_only', 'review_only')) {
+            return 'read_only_assessment'
+        }
+    }
+
+    foreach ($value in @($explicitValues.ToArray())) {
         switch ($value) {
             { $_ -in @('read_only_assessment', 'read_only_audit', 'capability_assessment', 'assessment', 'report_only', 'review_only') } { return 'read_only_assessment' }
             { $_ -in @('inspection', 'inspection_only', 'diagnostic_only', 'inventory_only', 'source_anchor_observation') } { return 'inspection' }
