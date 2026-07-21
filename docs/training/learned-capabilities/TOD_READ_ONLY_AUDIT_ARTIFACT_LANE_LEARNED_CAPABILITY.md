@@ -62,7 +62,7 @@ Trigger: TOD must classify a saved `.patch` file as evidence for route hygiene, 
 
 Reality: A saved patch under `runtime_remote_training/cleanup_holds/` is not product source and is not itself an implementation target. It is preserved evidence. Treating it as a bounded edit target creates false materialization blockers or tempts unsafe reapplication of old experiments.
 
-Observation: `TSK-ROUTE-EXPERIMENT-PATCH-EVIDENCE-R3` preserved read-only task mode but blocked because `.patch` evidence under `cleanup_holds` was outside the local executor's allowed evidence inputs. `TSK-ROUTE-EXPERIMENT-PATCH-EVIDENCE-R4` and `R5` exposed a second shape issue: a generic `chat_execution` wrapper could still cause bounded-edit materialization even when the task was explicitly read-only. `R6` and `R7` then published read-only classification artifacts from the saved patch without source-code mutation.
+Observation: `TSK-ROUTE-EXPERIMENT-PATCH-EVIDENCE-R3` preserved read-only task mode but blocked because `.patch` evidence under `cleanup_holds` was outside the local executor's allowed evidence inputs. `TSK-ROUTE-EXPERIMENT-PATCH-EVIDENCE-R4` and `R5` exposed a second shape issue: a generic `chat_execution` wrapper could still cause bounded-edit materialization even when the task was explicitly read-only. `R6` and `R7` then published read-only classification artifacts from the saved patch without source-code mutation. Fresh-target `TSK-ROUTE-FRESH-PATCH-INDEPENDENT-R2` exposed a third shape issue: a stale patch path mentioned as an exclusion could still be treated as the explicit input target. `TSK-ROUTE-FRESH-PATCH-INDEPENDENT-R3` passed after the executor distinguished explicit `Input Patch:` from exclusion text and registered a fresh route patch from git history.
 
 Root Cause: The original learned capability handled JSON evidence artifacts, not preserved patch evidence. The executor lacked a patch-evidence reader with safe input roots, safe output roots, no-apply guarantees, and authority-risk classification.
 
@@ -78,14 +78,25 @@ Decomposition Ladder:
 7. Publish a JSON classification artifact.
 8. Assert `no_code_changes=true`.
 9. Reject fresh-source mutation as completion evidence.
+10. For fresh-target proof, distinguish an explicit patch input from a stale patch path mentioned as an exclusion, warning, or materializer candidate.
+11. When no explicit patch input is provided, discover a prior route/authority change from repository history and register it as read-only evidence before classification.
 
 Smallest Successful Rung: `TSK-ROUTE-EXPERIMENT-PATCH-EVIDENCE-R6`
 
 Repeatability Check: `TSK-ROUTE-EXPERIMENT-PATCH-EVIDENCE-R7`
 
+Fresh Analogous Demonstration: `TSK-ROUTE-FRESH-PATCH-INDEPENDENT-R3`
+
 Implementation Summary: Codex repaired the local executor and mode-precedence control plane after TOD's blocked attempts. TOD then ran the repaired lane and published:
 - `runtime_remote_training/read_only_audit_artifacts/TOD_ROUTE_EXPERIMENT_PATCH_EVIDENCE_R6.latest.json`
 - `runtime_remote_training/read_only_audit_artifacts/TOD_ROUTE_EXPERIMENT_PATCH_EVIDENCE_R7.latest.json`
+- `runtime_remote_training/read_only_audit_artifacts/TSK-ROUTE-FRESH-PATCH-INDEPENDENT-R3_9e9c44454556.latest.json`
+
+Fresh registration evidence:
+- Source commit: `9e9c44454556`
+- Registered patch: `runtime_remote_training/cleanup_holds/TSK-ROUTE-FRESH-PATCH-INDEPENDENT-R3_9e9c44454556.patch`
+- Route files classified: 2
+- Signals detected: `visible_reply_authority`, `operator_contract_injection`
 
 Validation:
 - `patch evidence input read`: pass
@@ -94,12 +105,13 @@ Validation:
 - `no product source edit assertion`: pass
 - `Invoke-Pester -Script tests\TOD.ReadOnlyAuditRegression.Tests.ps1`: pass
 - `Invoke-Pester -Script tests\TOD.BoundedEditMaterialization.Tests.ps1`: pass
+- `TSK-ROUTE-FRESH-PATCH-INDEPENDENT-R3`: pass; fresh patch registered and classified from broad route/authority evidence request
 
-General Rule Learned: A patch can be either an edit instruction or preserved evidence. TOD must classify the task mode before treating a `.patch` as executable. For authority audits, the patch is evidence and must be read, classified, and preserved without application.
+General Rule Learned: A patch can be either an edit instruction or preserved evidence. TOD must classify the task mode before treating a `.patch` as executable. For authority audits, the patch is evidence and must be read, classified, and preserved without application. A path string alone is not proof of explicit input authority; TOD must distinguish direct input directives from stale examples, exclusions, and diagnostic mentions.
 
 Prevention Rule: Do not broaden source-edit safe roots to include cleanup holds. Add explicit read-only evidence readers with narrow input/output roots and `no_code_changes` validation instead.
 
-Reuse Trigger: Any saved `.patch` in `runtime_remote_training/cleanup_holds/` or `tod/out/tests/` that needs route hygiene, hardcoded-response, response-authority, or phrase-patch classification.
+Reuse Trigger: Any saved `.patch` in `runtime_remote_training/cleanup_holds/` or `tod/out/tests/` that needs route hygiene, hardcoded-response, response-authority, or phrase-patch classification. Also reuse when a route/authority audit needs a fresh analogous target and only repository history can supply the next evidence object.
 
 Dependent Capabilities:
 - Direct chat read-only task mode preservation
@@ -107,11 +119,11 @@ Dependent Capabilities:
 - Response authority audit classification
 - Route hygiene boundary discipline
 
-Capability Confidence: medium. The lane passed R6/R7 and focused regression tests after Codex repair. It is not yet retired because TOD has not completed a fresh analogous saved-patch target without Codex field scaffolding.
+Capability Confidence: medium-high. The lane passed R6/R7, focused regression tests, and R3 fresh-target registration/classification after Codex repaired the stale-path precedence gap.
 
-Independent Pass Rate: 0 fully independent passes; 2 scaffolded/repeat passes after control-plane repair.
+Independent Pass Rate: 1 fresh analogous demonstration through repaired lane; 2 scaffolded/repeat passes after control-plane repair.
 
-Separate Debt: `APP-TOD-034` remains open until a fresh patch evidence target is classified without Codex executor changes.
+Separate Debt: `APP-TOD-034` is no longer blocked on fresh-target evidence. It remains open for reliability until a future fresh route/authority case passes without additional executor changes.
 
 Date Extended: 2026-07-21
 

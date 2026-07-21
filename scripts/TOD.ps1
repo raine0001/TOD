@@ -16460,7 +16460,12 @@ function Write-TodExecutionJsonAtomically {
             if (Test-Path -Path $Path) {
                 [System.IO.File]::Replace($tempPath, $Path, $backupPath, $true)
                 if (Test-Path -Path $backupPath) {
-                    Remove-Item -Path $backupPath -Force -ErrorAction SilentlyContinue
+                    try {
+                        [System.IO.File]::Delete($backupPath)
+                    }
+                    catch {
+                        # Backup cleanup is best-effort; do not fail the atomic write after Replace succeeded.
+                    }
                 }
             }
             else {

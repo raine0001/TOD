@@ -344,4 +344,65 @@ Classify patch evidence for route-level hardcoded response authority. Read-only 
             Remove-Item -Path $outputPath -Force -ErrorAction SilentlyContinue
         }
     }
+
+    It 'registers a fresh route patch from git history before classifying patch evidence' {
+        $taskId = ('TSK-FRESH-ROUTE-PATCH-TEST-{0}' -f [guid]::NewGuid().ToString('N').Substring(0, 8))
+        $promptText = @"
+Training objective: independently prove APP-TOD-034 on a fresh analogous route/authority patch target.
+Inspect existing repository evidence for a prior Studio MIM/TOD route change that is not the already-classified cleanup_holds patch.
+Register one fresh route/authority patch evidence file under runtime_remote_training/cleanup_holds/.
+Classify the registered patch through the read-only patch evidence classification lane.
+Publish a JSON artifact under runtime_remote_training/read_only_audit_artifacts/.
+Do not modify product source.
+Do not reapply the patch.
+Fresh patch evidence target must not be runtime_remote_training/cleanup_holds/20260721_remaining_dirty_mim_tod_route_experiments.patch.
+Read-only assessment. No source code changes.
+"@
+        $promptPath = New-TestPromptFile -Content $promptText
+        $context = [pscustomobject]@{
+            task_id = $taskId
+            objective_id = 'TOD-ROUTE-EXPERIMENT-AUTHORITY-INDEPENDENT-FRESH-PATCH-V1'
+            title = 'Fresh route patch evidence registration'
+            scope = $promptText
+            prompt_path = $promptPath
+            task_category = 'chat_execution'
+            allowed_files = @()
+            validation_commands = @()
+            metadata = @{ task_category = 'chat_execution'; task_type = 'read_only_assessment' }
+        }
+
+        $createdPatch = $null
+        $createdArtifact = $null
+        try {
+            $result = Invoke-LocalExecutionEngine -Context $context
+            [string]$result.status | Should Be 'completed'
+
+            $createdPatch = @($result.files_changed | Where-Object { [string]$_ -match '^runtime_remote_training/cleanup_holds/.+\.patch$' })[0]
+            $createdArtifact = @($result.files_changed | Where-Object { [string]$_ -match '^runtime_remote_training/read_only_audit_artifacts/.+\.json$' })[0]
+            [string]$createdPatch | Should Not BeNullOrEmpty
+            [string]$createdArtifact | Should Not BeNullOrEmpty
+            [string]$createdPatch | Should Not Be 'runtime_remote_training/cleanup_holds/20260721_remaining_dirty_mim_tod_route_experiments.patch'
+
+            $patchPath = Join-Path $repoRoot ([string]$createdPatch -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+            $artifactPath = Join-Path $repoRoot ([string]$createdArtifact -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+            Test-Path -Path $patchPath -PathType Leaf | Should Be $true
+            Test-Path -Path $artifactPath -PathType Leaf | Should Be $true
+
+            $artifact = Get-Content -Path $artifactPath -Raw | ConvertFrom-Json
+            [string]$artifact.artifact_type | Should Be 'tod_patch_evidence_authority_classification'
+            [bool]$artifact.no_code_changes | Should Be $true
+            [int]$artifact.patch_summary.route_file_count | Should BeGreaterThan 0
+            @($artifact.inspected_files) -contains [string]$createdPatch | Should Be $true
+            @($result.commands_run) -contains 'Register-FreshRoutePatchEvidenceFromGitHistory' | Should Be $true
+        }
+        finally {
+            Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force -ErrorAction SilentlyContinue
+            if ($createdPatch) {
+                Remove-Item -Path (Join-Path $repoRoot ([string]$createdPatch -replace '/', [System.IO.Path]::DirectorySeparatorChar)) -Force -ErrorAction SilentlyContinue
+            }
+            if ($createdArtifact) {
+                Remove-Item -Path (Join-Path $repoRoot ([string]$createdArtifact -replace '/', [System.IO.Path]::DirectorySeparatorChar)) -Force -ErrorAction SilentlyContinue
+            }
+        }
+    }
 }

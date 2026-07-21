@@ -57,15 +57,15 @@ Capability: TOD must safely ingest preserved patch evidence for read-only classi
 
 Current Apprentice: TOD
 
-Progress: `scaffolded_pass`; Codex repaired the local executor/control-plane rung after TOD's blocked attempt. TOD then completed R6 through the repaired read-only patch evidence lane and repeated R7 without additional code changes, publishing `runtime_remote_training/read_only_audit_artifacts/TOD_ROUTE_EXPERIMENT_PATCH_EVIDENCE_R6.latest.json` and `runtime_remote_training/read_only_audit_artifacts/TOD_ROUTE_EXPERIMENT_PATCH_EVIDENCE_R7.latest.json`.
+Progress: `independent_demo_passed`; Codex repaired the local executor/control-plane rung after TOD's blocked attempt. TOD then completed R6 through the repaired read-only patch evidence lane and repeated R7 without additional code changes, publishing `runtime_remote_training/read_only_audit_artifacts/TOD_ROUTE_EXPERIMENT_PATCH_EVIDENCE_R6.latest.json` and `runtime_remote_training/read_only_audit_artifacts/TOD_ROUTE_EXPERIMENT_PATCH_EVIDENCE_R7.latest.json`. Fresh-target R1/R2 then exposed a stale-patch precedence blocker. After that rung was repaired, TOD completed `TSK-ROUTE-FRESH-PATCH-INDEPENDENT-R3` from a broad fresh-target request, registered `runtime_remote_training/cleanup_holds/TSK-ROUTE-FRESH-PATCH-INDEPENDENT-R3_9e9c44454556.patch` from commit `9e9c44454556`, and published `runtime_remote_training/read_only_audit_artifacts/TSK-ROUTE-FRESH-PATCH-INDEPENDENT-R3_9e9c44454556.latest.json`.
 
-Proficiency: `guided`; TOD produced the blocker through R3/R5, completed R6, and repeated R7 after the executor learned a safe read-only patch evidence shape. This is not independent yet because Codex implemented the lane and precedence repair.
+Proficiency: `independent`; TOD produced the blocker through R3/R5, completed R6, repeated R7, then passed R3 fresh-target registration/classification without receiving an explicit patch path. This is not yet `reliable` because Codex still repaired the fresh-registration executor rung after R2.
 
-Independent Demonstration: `pending`; TOD must select or register a fresh saved-patch evidence target, run the read-only patch evidence lane without Codex field scaffolding, publish JSON/MD artifacts, and explain which behavior may return only through learned capability paths. Current limitation: the allowed patch evidence roots contain only one saved patch target, so a true fresh analogous case is pending the next route/authority experiment capture.
+Independent Demonstration: `passed`; `TSK-ROUTE-FRESH-PATCH-INDEPENDENT-R3` selected and registered a fresh route patch from repository history, ran the read-only patch evidence lane without an explicit input patch, published JSON evidence, and preserved the rule that route behavior may return only through learned capability/service paths.
 
-Freeze: partial; the borrowed control-plane lesson is captured in `TOD_ROUTE_EXPERIMENT_AUTHORITY_CLASSIFICATION_V1.md`. A full learned capability freeze remains open until the fresh independent demonstration passes.
+Freeze: updated; the borrowed control-plane lesson and fresh-target demonstration are captured in `TOD_ROUTE_EXPERIMENT_AUTHORITY_CLASSIFICATION_V1.md` and `TOD_READ_ONLY_AUDIT_ARTIFACT_LANE_LEARNED_CAPABILITY.md`.
 
-Retirement: open.
+Retirement: open pending reliability; one more future fresh route/authority case must pass without additional executor changes before this borrowed capability can be treated as retired.
 
 ### APP-TOD-033: Direct Chat Read-Only Task Mode Preservation
 

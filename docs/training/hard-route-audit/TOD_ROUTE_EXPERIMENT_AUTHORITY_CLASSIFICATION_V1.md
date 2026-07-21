@@ -128,6 +128,9 @@ Observed result:
 - Codex repaired the precedence and matcher rules so explicit read-only task intent outranks a generic chat wrapper when a safe patch evidence input/output contract is present.
 - R6 then completed through TOD's local execution lane and published `runtime_remote_training/read_only_audit_artifacts/TOD_ROUTE_EXPERIMENT_PATCH_EVIDENCE_R6.latest.json`.
 - R7 repeated the same read-only classification through TOD's local execution lane without additional code changes and published `runtime_remote_training/read_only_audit_artifacts/TOD_ROUTE_EXPERIMENT_PATCH_EVIDENCE_R7.latest.json`.
+- Fresh-target R1/R2 exposed the remaining independence gap: broad "find/register a fresh route patch" tasks still reused the already-classified cleanup patch when the old path appeared as an exclusion or materializer candidate.
+- Codex repaired that evidence-selection rung after the R2 blocker by teaching the local executor to distinguish an explicit `Input Patch:` from a stale patch path mentioned as "do not use this", and by adding a fresh route-patch registration lane that discovers committed route diffs from git history.
+- R3 then completed through TOD's local execution lane from a broad fresh-target request, registered `runtime_remote_training/cleanup_holds/TSK-ROUTE-FRESH-PATCH-INDEPENDENT-R3_9e9c44454556.patch` from commit `9e9c44454556`, and published `runtime_remote_training/read_only_audit_artifacts/TSK-ROUTE-FRESH-PATCH-INDEPENDENT-R3_9e9c44454556.latest.json`.
 
 R6/R7 evidence:
 
@@ -140,6 +143,18 @@ R6/R7 evidence:
 - No source code modified by assessment: true
 - Latest execution result advanced to R7 after background execution completed.
 
+R3 fresh-target evidence:
+
+- Artifact type: `tod_patch_evidence_authority_classification`
+- Task: `TSK-ROUTE-FRESH-PATCH-INDEPENDENT-R3`
+- Input patch: `runtime_remote_training/cleanup_holds/TSK-ROUTE-FRESH-PATCH-INDEPENDENT-R3_9e9c44454556.patch`
+- Source commit: `9e9c44454556`
+- Route files classified: 2
+- Classification counts: `hardcoded_response_authority_risk=1`, `operator_contract_authority_risk=1`
+- Signals detected: `visible_reply_authority`, `operator_contract_injection`
+- No source code modified by assessment: true
+- Latest execution result advanced to R3 after background execution completed.
+
 Validation:
 
 - `python -m py_compile scripts/check_remote_preactive_trace_readiness.py scripts/generate_remote_preactive_field_trace_package.py` passed.
@@ -147,6 +162,7 @@ Validation:
 - Full Pester result is currently 16 passed / 1 failed. The remaining failure is an existing admin-repair lane expectation, not this read-only preservation repair.
 - `Invoke-Pester -Script tests\TOD.ReadOnlyAuditRegression.Tests.ps1` passed with the read-only patch evidence lane.
 - `Invoke-Pester -Script tests\TOD.BoundedEditMaterialization.Tests.ps1` passed with explicit read-only mode outranking generic `chat_execution`.
+- `Invoke-Pester -Script tests\TOD.ReadOnlyAuditRegression.Tests.ps1` passed after adding the stale-patch exclusion regression for fresh target registration.
 
 Borrowed capability created:
 
@@ -156,21 +172,20 @@ Training debt advanced:
 
 - `APP-TOD-034: Patch Evidence Ingestion For Read-Only Audits`
 
-TOD independent status remains false. TOD completed R6 and repeated R7 after Codex repaired the executor/control-plane rung, so this is a scaffolded/repeat pass rather than a retired capability.
+TOD independent status advanced to `independent_demo_passed` for fresh-target evidence registration and read-only classification. R3 did not receive an explicit patch path; TOD used the repaired lane to discover committed route evidence, register a fresh patch, classify it, and publish validation evidence. This is still not `reliable` because the fresh-registration lane itself was Codex-repaired after R2. Reliability requires repeated future fresh analogous cases without more executor changes.
 
 The next smallest rung is a fresh analogous task where TOD selects or registers a patch-evidence target, runs the read-only evidence lane, publishes classification evidence, and explains which behavior may return only through learned capability paths.
 
-Fresh-target limitation:
+Fresh-target limitation resolved:
 
-- Current allowed patch evidence roots contain only one saved patch target.
-- A true independent fresh-patch demonstration is therefore blocked on the existence of a second saved route/authority experiment patch or a future dirty-worktree capture.
-- This is not an external blocker. The next time a route experiment or hardcoded-response cleanup patch is captured, TOD should automatically run this lane without Codex changing executor code.
+- The allowed patch evidence roots still preserve saved cleanup patches, but TOD can now register a fresh read-only patch evidence object from committed route history when a second saved cleanup patch does not yet exist.
+- The next repeatability bar is reliability: on the next independently discovered route/authority issue, TOD must run the same register -> classify -> publish loop without additional executor repair.
 
 ## Next Automatic Action
 
-TOD should repeat Rung 1 on a fresh saved-patch target and publish:
+TOD should continue Rung 2 on the response-authority audit service packaging path. The fresh Rung 1 demonstration is now published:
 
-- a new `runtime_remote_training/read_only_audit_artifacts/*.latest.json` classification artifact
-- `docs/training/hard-route-audit/TOD_ROUTE_EXPERIMENT_AUTHORITY_CLASSIFICATION_V1.md`
+- `runtime_remote_training/read_only_audit_artifacts/TSK-ROUTE-FRESH-PATCH-INDEPENDENT-R3_9e9c44454556.latest.json`
+- `runtime_remote_training/cleanup_holds/TSK-ROUTE-FRESH-PATCH-INDEPENDENT-R3_9e9c44454556.patch`
 
-Then TOD should start Rung 2 on the response-authority audit service packaging path. Retirement requires a fresh analogous pass without Codex field scaffolding.
+Retirement requires at least one more future fresh analogous pass without Codex executor changes.

@@ -1893,6 +1893,133 @@ function Test-LocalExecutionPatchEvidenceArtifactTask {
     return $readOnlyEvidenceTask -and ($text -match 'patch') -and ($text -match 'classif|authority|hardcoded|route experiment|route-level')
 }
 
+function Test-LocalExecutionFreshRoutePatchEvidenceRegistrationTask {
+    param([Parameter(Mandatory = $true)]$Context)
+
+    $category = Get-LocalExecutionTaskCategory -Context $Context
+    $combinedText = Get-LocalExecutionCombinedText -Context $Context
+    if ($combinedText -match '(?im)\bInput\s+Patch\s*:') {
+        return $false
+    }
+
+    $text = $combinedText.ToLowerInvariant()
+    $readOnlyEvidenceTask = (
+        @('read_only_assessment', 'report_only', 'diagnostic_only', 'inspection_only', 'inspection') -contains $category -or
+        ($text -match 'read-only|read only|no source code changes|no code changes')
+    )
+    if (-not $readOnlyEvidenceTask) { return $false }
+
+    return (
+        ($text -match 'fresh|prior|repository|git|history') -and
+        ($text -match 'patch') -and
+        ($text -match 'route|router|studio|mim/tod|authority')
+    )
+}
+
+function Get-LocalExecutionRoutePatchEvidenceCommits {
+    param()
+
+    $routePaths = @(
+        'tmp_remote_mim/core/routers/studio.py',
+        'tmp_remote_mim/core/routers/tod_ui.py',
+        'core/routers/studio.py',
+        'core/routers/tod_ui.py',
+        'tmp_remote_mim/routes.py',
+        'routes.py'
+    )
+    $args = @('-C', $script:LocalEngineRepoRoot, 'log', '--format=%H', '--') + $routePaths
+    $commits = @(& git @args 2>$null | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) })
+    return @($commits)
+}
+
+function Invoke-LocalExecutionFreshRoutePatchEvidenceRegistration {
+    param(
+        [Parameter(Mandatory = $true)]$Context,
+        [Parameter(Mandatory = $true)]$Result,
+        [Parameter(Mandatory = $true)]$Spec
+    )
+
+    $commits = Get-LocalExecutionRoutePatchEvidenceCommits
+    if (@($commits).Count -eq 0) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'fresh_route_patch_git_history_missing' -Reason 'No committed route history was found for Studio MIM/TOD route evidence registration.' -MissingVariable 'route_patch_git_commit')
+    }
+
+    $routePaths = @(
+        'tmp_remote_mim/core/routers/studio.py',
+        'tmp_remote_mim/core/routers/tod_ui.py',
+        'core/routers/studio.py',
+        'core/routers/tod_ui.py',
+        'tmp_remote_mim/routes.py',
+        'routes.py'
+    )
+    $selectedCommit = ''
+    $selectedPatchText = ''
+    foreach ($commit in @($commits)) {
+        $showArgs = @('-C', $script:LocalEngineRepoRoot, 'show', '--format=', '--find-renames', [string]$commit, '--') + $routePaths
+        $patchText = [string]::Join("`n", @(& git @showArgs 2>$null))
+        if ($patchText -match '(?m)^diff --git ' -and $patchText -match 'tmp_remote_mim/core/routers|core/routers|routes\.py') {
+            $selectedCommit = [string]$commit
+            $selectedPatchText = $patchText
+            break
+        }
+    }
+
+    if ([string]::IsNullOrWhiteSpace($selectedCommit) -or [string]::IsNullOrWhiteSpace($selectedPatchText)) {
+        return (New-LocalExecutionBlockedResult -Context $Context -Result $Result -Spec $Spec -ReasonCode 'fresh_route_patch_diff_missing' -Reason 'Committed route history exists, but no route patch diff could be extracted for evidence registration.' -MissingVariable 'route_patch_diff')
+    }
+
+    $taskId = if ($Context.PSObject.Properties['task_id'] -and -not [string]::IsNullOrWhiteSpace([string]$Context.task_id)) { [string]$Context.task_id } else { 'TOD-FRESH-ROUTE-PATCH' }
+    $safeTaskId = ($taskId -replace '[^A-Za-z0-9_-]', '-')
+    $commitShort = if ($selectedCommit.Length -gt 12) { $selectedCommit.Substring(0, 12) } else { $selectedCommit }
+    $inputRel = ('runtime_remote_training/cleanup_holds/{0}_{1}.patch' -f $safeTaskId, $commitShort)
+    $outputRel = ('runtime_remote_training/read_only_audit_artifacts/{0}_{1}.latest.json' -f $safeTaskId, $commitShort)
+    $inputAbs = Join-Path $script:LocalEngineRepoRoot ($inputRel -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+    New-Item -ItemType Directory -Path (Split-Path -Parent $inputAbs) -Force | Out-Null
+    [System.IO.File]::WriteAllText($inputAbs, $selectedPatchText, [System.Text.UTF8Encoding]::new($false))
+
+    $combinedScope = @(
+        [string]$Context.scope,
+        '',
+        ('Input Patch: {0}' -f $inputRel),
+        ('Output artifact: {0}' -f $outputRel),
+        'Classify patch evidence for route-level hardcoded response authority, operator-contract authority, phrase patch debt, reusable service candidates, process support, and learned-capability return paths.',
+        'Read-only assessment. No source code changes.'
+    ) -join "`n"
+
+    $contextMembers = [ordered]@{}
+    foreach ($property in @($Context.PSObject.Properties)) {
+        $contextMembers[$property.Name] = $property.Value
+    }
+    $contextMembers['scope'] = $combinedScope
+    $contextMembers['task_category'] = 'read_only_assessment'
+    $contextMembers['metadata'] = @{
+        task_category = 'read_only_assessment'
+        task_type = 'read_only_assessment'
+        selected_git_commit = $selectedCommit
+        registered_patch = $inputRel
+    }
+    $classificationContext = [pscustomobject]$contextMembers
+    $classificationResult = Invoke-LocalExecutionPatchEvidenceArtifact -Context $classificationContext -Result $Result -Spec $Spec
+
+    if ([string]$classificationResult.status -eq 'completed') {
+        $classificationResult.files_changed = @($inputRel, $outputRel)
+        $commands = @($classificationResult.commands_run)
+        $classificationResult | Add-Member -NotePropertyName commands_run -NotePropertyValue @('Register-FreshRoutePatchEvidenceFromGitHistory') -Force
+        if (@($commands).Count -gt 0) {
+            $classificationResult.commands_run = @('Register-FreshRoutePatchEvidenceFromGitHistory') + @($commands)
+        }
+        $classificationResult | Add-Member -NotePropertyName registered_patch_source -NotePropertyValue ([ordered]@{
+            source = 'git_history'
+            commit = $selectedCommit
+            patch = $inputRel
+            output_artifact = $outputRel
+        }) -Force
+        $classificationResult.summary = ('Registered fresh route patch evidence {0} from commit {1} and published classification artifact {2}.' -f $inputRel, $commitShort, $outputRel)
+    }
+
+    return $classificationResult
+}
+
 function Invoke-LocalExecutionPatchEvidenceArtifact {
     param(
         [Parameter(Mandatory = $true)]$Context,
@@ -7329,6 +7456,7 @@ function Get-LocalExecutionEngineSpec {
             "user_app_hero_media_generation",
             "read_only_audit_artifact_publication",
             "patch_evidence_authority_classification",
+            "fresh_route_patch_evidence_registration",
             "source_anchor_observation_artifact_publication",
             "different_target_discovery_artifact_publication",
             "target_selection_artifact_publication",
@@ -7384,6 +7512,9 @@ function Invoke-LocalExecutionEngine {
     }
     elseif (Test-LocalExecutionReadOnlyAuditArtifactTask -Context $Context) {
         $result = Invoke-LocalExecutionReadOnlyAuditArtifact -Context $Context -Result $result -Spec $spec
+    }
+    elseif (Test-LocalExecutionFreshRoutePatchEvidenceRegistrationTask -Context $Context) {
+        $result = Invoke-LocalExecutionFreshRoutePatchEvidenceRegistration -Context $Context -Result $result -Spec $spec
     }
     elseif (Test-LocalExecutionPatchEvidenceArtifactTask -Context $Context) {
         $result = Invoke-LocalExecutionPatchEvidenceArtifact -Context $Context -Result $result -Spec $spec
