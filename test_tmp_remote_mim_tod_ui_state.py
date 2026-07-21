@@ -1036,13 +1036,16 @@ class TodUiStateClassificationTests(unittest.TestCase):
         self.assertNotIn('id="todLifecycle"', source)
         self.assertNotIn("tod-phase-track", source)
 
-    def test_tod_console_includes_phase_progress_fact_cards(self) -> None:
+    def test_tod_console_promotes_operator_workspace_in_studio_embed(self) -> None:
         request = types.SimpleNamespace(query_params={})
         html = asyncio.run(self.tod_ui.tod_console(request))
 
-        self.assertIn("factPhaseProgress", html)
-        self.assertIn("factStallWatch", html)
-        self.assertIn("Stall watch clear.", html)
+        self.assertIn("todOperatorWorkspace", html)
+        self.assertIn("todOperatorTimeline", html)
+        self.assertIn("renderOperatorWorkspace", html)
+        self.assertIn("renderStateWithOperatorWorkspace", html)
+        self.assertIn("tod-live-workspace-v2", html)
+        self.assertIn("body.studio-embed .tod-activity-strip, body.studio-embed .system-details", html)
 
     def test_chat_ui_message_starts_training_when_requested(self) -> None:
         state = {

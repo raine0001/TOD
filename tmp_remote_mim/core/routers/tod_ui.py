@@ -9406,6 +9406,25 @@ async def tod_console(request: Request) -> HTMLResponse:
                 .chat-quick-copy {{ font-size: 12px; color: var(--muted); line-height: 1.45; margin-top: 2px; }}
                 .status-inline {{ font-size: 12px; color: var(--muted); }}
                 .muted {{ color: var(--muted); }}
+                .operator-workspace {{ display: grid; grid-template-columns: minmax(280px, 0.72fr) minmax(0, 1.28fr); gap: 16px; padding: 22px 24px; border-bottom: 1px solid var(--line); }}
+                .operator-card {{ border: 1px solid rgba(97,219,191,0.22); border-radius: 14px; background: rgba(3,15,13,0.86); padding: 18px; min-width: 0; box-shadow: 0 0 24px rgba(45,255,157,0.08); }}
+                .operator-card[data-state="blocked"], .operator-card[data-state="stalled"] {{ border-color: rgba(255,92,122,0.46); background: rgba(35,9,21,0.58); }}
+                .operator-card[data-state="waiting"] {{ border-color: rgba(255,209,102,0.46); background: rgba(35,27,9,0.48); }}
+                .operator-card[data-state="complete"], .operator-card[data-state="working"] {{ border-color: rgba(45,255,157,0.46); background: rgba(5,28,21,0.62); }}
+                .operator-head {{ display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; }}
+                .operator-title {{ margin: 10px 0 8px; font-size: clamp(26px, 3.2vw, 40px); line-height: 1.05; color: #f2fff8; }}
+                .operator-summary {{ color: var(--ink); font-size: 15px; line-height: 1.55; overflow-wrap: anywhere; }}
+                .operator-meta {{ margin-top: 12px; color: var(--muted); font-size: 12px; line-height: 1.45; }}
+                .operator-grid {{ display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 14px; }}
+                .operator-field {{ border: 1px solid rgba(97,219,191,0.16); border-radius: 10px; background: rgba(2,12,10,0.66); padding: 11px 12px; min-width: 0; }}
+                .operator-field-label {{ color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.10em; }}
+                .operator-field-value {{ margin-top: 6px; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }}
+                .operator-timeline {{ display: grid; gap: 10px; margin-top: 14px; max-height: 300px; overflow-y: auto; padding-right: 4px; }}
+                .operator-event {{ border: 1px solid rgba(97,219,191,0.16); border-radius: 10px; background: rgba(2,12,10,0.72); padding: 11px 12px; }}
+                .operator-event-top {{ display: flex; justify-content: space-between; gap: 12px; align-items: baseline; flex-wrap: wrap; }}
+                .operator-event-label {{ color: var(--accent); font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }}
+                .operator-event-time {{ color: var(--muted); font-size: 12px; }}
+                .operator-event-detail {{ margin-top: 7px; font-size: 13px; line-height: 1.45; color: var(--ink); overflow-wrap: anywhere; }}
                 .tod-activity-strip {{ display: grid; gap: 14px; margin: 0 24px 24px; padding: 18px; border: 1px solid rgba(97,219,191,0.18); border-radius: 14px; background: rgba(3,15,13,0.78); }}
                 .tod-activity-head {{ display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }}
                 .tod-activity-copy {{ display: grid; gap: 6px; min-width: 0; }}
@@ -9428,16 +9447,19 @@ async def tod_console(request: Request) -> HTMLResponse:
                 body.studio-embed .page {{ max-width: none; padding: 16px; }}
                 body.studio-embed .shell {{ border-radius: 10px; }}
                 body.studio-embed .hero {{ padding: 18px 20px; }}
+                body.studio-embed .tod-activity-strip, body.studio-embed .system-details {{ display: none !important; }}
                 @media (max-width: 1100px) {{
                     .facts {{ grid-template-columns: repeat(4, minmax(0, 1fr)); }}
                     .grid {{ grid-template-columns: 1fr; }}
                     .tod-activity-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+                    .operator-workspace {{ grid-template-columns: 1fr; }}
                 }}
                 @media (max-width: 720px) {{
                     .facts {{ grid-template-columns: 1fr 1fr; }}
                     .kv {{ grid-template-columns: 1fr; }}
                     .training-band {{ grid-template-columns: 1fr; }}
                     .tod-activity-grid {{ grid-template-columns: 1fr; }}
+                    .operator-grid {{ grid-template-columns: 1fr; }}
                 }}
                         </style>
 </head>
@@ -9541,6 +9563,38 @@ async def tod_console(request: Request) -> HTMLResponse:
                 <div id=\"todStatusSummary\" class=\"summary\">Checking live teammate signals and handoff lane status.</div>
                 <div id=\"chatActivityIndicator\" class=\"chat-activity\" data-state=\"idle\"><span class=\"chat-activity-dot\" aria-hidden=\"true\"></span><span id=\"chatActivityText\" class=\"chat-activity-text\">Idle</span><span id=\"chatActivitySummary\">Waiting for teammate updates.</span></div>
       </header>
+            <section id=\"todOperatorWorkspace\" class=\"operator-workspace\" aria-label=\"TOD live work\">
+                <article id=\"todOperatorLiveCard\" class=\"operator-card\" data-state=\"unknown\">
+                    <div class=\"operator-head\">
+                        <div class=\"eyebrow\">TOD Live Work</div>
+                        <div id=\"todOperatorStatus\" class=\"status-chip\" data-tone=\"unknown\">Loading</div>
+                    </div>
+                    <h2 id=\"todOperatorTitle\" class=\"operator-title\">Checking TOD...</h2>
+                    <div id=\"todOperatorNow\" class=\"operator-summary\">Waiting for live execution evidence.</div>
+                    <div id=\"todOperatorTimestamp\" class=\"operator-meta\">No timestamp yet.</div>
+                    <div class=\"operator-grid\">
+                        <div class=\"operator-field\"><div class=\"operator-field-label\">Phase</div><div id=\"todOperatorPhase\" class=\"operator-field-value\">-</div></div>
+                        <div class=\"operator-field\"><div class=\"operator-field-label\">Dave needed</div><div id=\"todOperatorDaveNeeded\" class=\"operator-field-value\">-</div></div>
+                        <div class=\"operator-field\"><div class=\"operator-field-label\">Waiting on</div><div id=\"todOperatorWaiting\" class=\"operator-field-value\">-</div></div>
+                        <div class=\"operator-field\"><div class=\"operator-field-label\">Next action</div><div id=\"todOperatorNext\" class=\"operator-field-value\">-</div></div>
+                    </div>
+                </article>
+                <article class=\"operator-card\">
+                    <div class=\"operator-head\">
+                        <div>
+                            <div class=\"eyebrow\">Objective Lifecycle</div>
+                            <div id=\"todOperatorTarget\" class=\"operator-summary\">No active target published.</div>
+                        </div>
+                    </div>
+                    <div class=\"operator-grid\">
+                        <div class=\"operator-field\"><div class=\"operator-field-label\">Objective</div><div id=\"todOperatorObjective\" class=\"operator-field-value\">-</div></div>
+                        <div class=\"operator-field\"><div class=\"operator-field-label\">Task</div><div id=\"todOperatorTask\" class=\"operator-field-value\">-</div></div>
+                        <div class=\"operator-field\"><div class=\"operator-field-label\">Training</div><div id=\"todOperatorTraining\" class=\"operator-field-value\">-</div></div>
+                        <div class=\"operator-field\"><div class=\"operator-field-label\">Controls</div><div id=\"todOperatorControls\" class=\"operator-field-value\">-</div></div>
+                    </div>
+                    <div id=\"todOperatorTimeline\" class=\"operator-timeline\"></div>
+                </article>
+            </section>
             <section class=\"primary-chat-panel\">
                 <section class=\"panel\">
                     <div class=\"chat-shell\">
@@ -9761,6 +9815,22 @@ async def tod_console(request: Request) -> HTMLResponse:
     const todActivityPhaseMeta = document.getElementById('todActivityPhaseMeta');
     const todActivityStall = document.getElementById('todActivityStall');
     const todActivityStallMeta = document.getElementById('todActivityStallMeta');
+    const todOperatorWorkspace = document.getElementById('todOperatorWorkspace');
+    const todOperatorLiveCard = document.getElementById('todOperatorLiveCard');
+    const todOperatorStatus = document.getElementById('todOperatorStatus');
+    const todOperatorTitle = document.getElementById('todOperatorTitle');
+    const todOperatorNow = document.getElementById('todOperatorNow');
+    const todOperatorTimestamp = document.getElementById('todOperatorTimestamp');
+    const todOperatorPhase = document.getElementById('todOperatorPhase');
+    const todOperatorDaveNeeded = document.getElementById('todOperatorDaveNeeded');
+    const todOperatorWaiting = document.getElementById('todOperatorWaiting');
+    const todOperatorNext = document.getElementById('todOperatorNext');
+    const todOperatorTarget = document.getElementById('todOperatorTarget');
+    const todOperatorObjective = document.getElementById('todOperatorObjective');
+    const todOperatorTask = document.getElementById('todOperatorTask');
+    const todOperatorTraining = document.getElementById('todOperatorTraining');
+    const todOperatorControls = document.getElementById('todOperatorControls');
+    const todOperatorTimeline = document.getElementById('todOperatorTimeline');
     const publishSummary = document.getElementById('publishSummary');
     const publishMirror = document.getElementById('publishMirror');
     const publishAccess = document.getElementById('publishAccess');
@@ -9849,6 +9919,65 @@ async def tod_console(request: Request) -> HTMLResponse:
     function clearNode(node) {{ while (node && node.firstChild) node.removeChild(node.firstChild); }}
     function setConsoleLight(node, ok) {{ if (!node) return; node.classList.remove('ok', 'err'); node.classList.add(ok ? 'ok' : 'err'); }}
     function appendCollectionItem(node, label, meta, text) {{ const item = document.createElement('article'); item.className = 'collection-item'; const top = document.createElement('div'); top.className = 'collection-top'; const labelNode = document.createElement('div'); labelNode.className = 'collection-label'; labelNode.textContent = safeText(label, 'Item'); const metaNode = document.createElement('div'); metaNode.className = 'collection-meta'; metaNode.textContent = safeText(meta, ''); const textNode = document.createElement('div'); textNode.className = 'collection-text'; textNode.textContent = safeText(text, 'No detail published.'); top.appendChild(labelNode); top.appendChild(metaNode); item.appendChild(top); item.appendChild(textNode); node.appendChild(item); }}
+    function renderOperatorWorkspace(workspace) {{
+        const payload = workspace && typeof workspace === 'object' ? workspace : {{}};
+        const statusCode = safeText(payload.status_code, 'unknown').toLowerCase();
+        const statusLabel = safeText(payload.status_label, statusCode.replaceAll('_', ' '));
+        const blocked = Boolean(payload.blocked) || ['blocked', 'stalled'].includes(statusCode);
+        const tone = blocked ? 'blocked' : ['working', 'complete', 'waiting'].includes(statusCode) ? statusCode : 'unknown';
+        if (todOperatorLiveCard) todOperatorLiveCard.dataset.state = tone;
+        if (todOperatorStatus) {{ todOperatorStatus.textContent = statusLabel; todOperatorStatus.dataset.tone = tone; }}
+        if (todOperatorTitle) todOperatorTitle.textContent = blocked ? `TOD is ${{statusLabel.toLowerCase()}}` : `TOD is ${{statusLabel.toLowerCase()}}`;
+        if (todOperatorNow) todOperatorNow.textContent = safeText(payload.working, 'No active TOD work is currently published.');
+        if (todOperatorTimestamp) todOperatorTimestamp.textContent = `${{safeText(payload.elapsed, 'Unknown age')}} since update`;
+        if (todOperatorPhase) todOperatorPhase.textContent = safeText(payload.current_phase, 'Unknown');
+        if (todOperatorDaveNeeded) todOperatorDaveNeeded.textContent = safeText(payload.dave_needed, 'unknown');
+        if (todOperatorWaiting) todOperatorWaiting.textContent = safeText(payload.waiting, blocked ? 'Blocked reason is not published.' : 'No current wait target.');
+        if (todOperatorNext) todOperatorNext.textContent = safeText(payload.next_action, 'No next action is published.');
+        if (todOperatorTarget) todOperatorTarget.textContent = safeText(payload.target, 'No active target published.');
+        if (todOperatorObjective) todOperatorObjective.textContent = safeText(payload.objective_id, 'No objective id published.');
+        if (todOperatorTask) todOperatorTask.textContent = safeText(payload.task_id, 'No task id published.');
+        if (todOperatorTraining) {{
+            const training = payload.training && typeof payload.training === 'object' ? payload.training : {{}};
+            const active = training.active ? 'active' : 'inactive';
+            todOperatorTraining.textContent = `${{active}}${{training.current_step ? ` - ${{safeText(training.current_step)}}` : ''}}`;
+        }}
+        if (todOperatorControls) {{
+            const controls = Array.isArray(payload.controls) ? payload.controls : [];
+            todOperatorControls.textContent = controls.length ? controls.map((item) => `${{safeText(item.label || item.id, 'control')}}${{item.enabled ? '' : ' disabled'}}`).join(' | ') : 'No browser controls published.';
+        }}
+        if (todOperatorTimeline) {{
+            clearNode(todOperatorTimeline);
+            const timeline = Array.isArray(payload.timeline) ? payload.timeline : [];
+            if (!timeline.length) {{
+                const empty = document.createElement('article');
+                empty.className = 'operator-event';
+                empty.innerHTML = '<div class="operator-event-top"><div class="operator-event-label">No live events</div><div class="operator-event-time">waiting</div></div><div class="operator-event-detail">TOD has not published live execution events for this objective yet.</div>';
+                todOperatorTimeline.appendChild(empty);
+            }} else {{
+                timeline.slice(0, 10).forEach((item) => {{
+                    const event = document.createElement('article');
+                    event.className = 'operator-event';
+                    const top = document.createElement('div');
+                    top.className = 'operator-event-top';
+                    const label = document.createElement('div');
+                    label.className = 'operator-event-label';
+                    label.textContent = safeText(item.label || item.role, 'event');
+                    const time = document.createElement('div');
+                    time.className = 'operator-event-time';
+                    time.textContent = safeText(item.created_age || item.created_at, '');
+                    const detail = document.createElement('div');
+                    detail.className = 'operator-event-detail';
+                    detail.textContent = safeText(item.detail || item.summary, 'No event detail published.');
+                    top.appendChild(label);
+                    top.appendChild(time);
+                    event.appendChild(top);
+                    event.appendChild(detail);
+                    todOperatorTimeline.appendChild(event);
+                }});
+            }}
+        }}
+    }}
     function renderOperatorTimeline(items) {{ clearNode(operatorTimelineList); if (!Array.isArray(items) || !items.length) {{ appendCollectionItem(operatorTimelineList, 'No communication events yet', '', 'Events will appear here as request, acknowledgement, execution, and result handoff updates land.'); return; }} items.forEach((item) => {{ appendCollectionItem(operatorTimelineList, `${{safeText(item.label || item.action, 'Action')}} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${{safeText(item.status, 'unknown')}}`, safeText(item.generated_at, ''), safeText(item.message || item.stdout_excerpt, 'No action detail published.')); }}); }}
     function handleObjectiveCardAction(action) {{ if (!action || !action.id) return; const mode = safeText(action.mode, 'operator_action'); if (mode === 'operator_action') {{ runOperatorAction(action); return; }} if (mode === 'chat_handoff') {{ handleQuickAction('send-to-copilot'); return; }} if (mode === 'local_view') {{ const summary = safeText(action.plan_summary, 'No plan summary is published.'); const milestones = Array.isArray(action.milestones) && action.milestones.length ? action.milestones.map((item) => `${{safeText(item.label, 'Step')}}=${{safeText(item.status, 'unknown')}}`).join(' | ') : 'No milestones are published.'; if (operatorActionStatus) operatorActionStatus.textContent = `${{summary}} ${{milestones}}`; }} }}
     function renderObjectiveCards(cards) {{ clearNode(objectiveCardsList); const payload = Array.isArray(cards) ? cards : []; if (!payload.length) {{ appendCollectionItem(objectiveCardsList, 'No objective card', '', 'The TOD console has not published an active objective card yet.'); return; }} payload.forEach((card) => {{ const wrapper = document.createElement('article'); wrapper.className = 'collection-item'; const top = document.createElement('div'); top.className = 'collection-top'; const labelNode = document.createElement('div'); labelNode.className = 'collection-label'; labelNode.textContent = `${{safeText(card.title, 'Objective')}} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${{safeText(card.status, 'unknown')}}`; const metaNode = document.createElement('div'); metaNode.className = 'collection-meta'; metaNode.textContent = `${{safeText(card.objective_id, 'no-objective')}} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· task=${{safeText(card.task_id, 'n/a')}}`; top.appendChild(labelNode); top.appendChild(metaNode); wrapper.appendChild(top); const summaryNode = document.createElement('div'); summaryNode.className = 'collection-text'; summaryNode.textContent = safeText(card.summary, 'No objective summary published.'); wrapper.appendChild(summaryNode); const planner = card.planner_state && typeof card.planner_state === 'object' ? card.planner_state : {{}}; const plannerNode = document.createElement('div'); plannerNode.className = 'collection-text muted'; plannerNode.textContent = planner.available ? `Planner ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${{safeText(planner.status_label, 'unknown')}} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${{safeText(planner.current_step, 'No planner step')}} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· next=${{safeText(planner.next_step, 'unknown')}}` : 'Planner state is not currently published.'; wrapper.appendChild(plannerNode); const executor = card.executor_state && typeof card.executor_state === 'object' ? card.executor_state : {{}}; const executorNode = document.createElement('div'); executorNode.className = 'collection-text muted'; executorNode.textContent = `Executor ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${{safeText(executor.status_label || executor.status, 'unknown')}} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${{safeText(executor.current_action, safeText(executor.summary, 'No executor state published.'))}}`; wrapper.appendChild(executorNode); const progress = card.phase_progress && typeof card.phase_progress === 'object' ? card.phase_progress : {{}}; const progressNode = document.createElement('div'); progressNode.className = 'collection-text muted'; progressNode.textContent = progress.available ? `${{safeText(progress.label, 'Phase progress')}} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${{safeText(progress.percent_complete, '0')}}% ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· next=${{safeText(progress.next_gate, 'unknown')}}` : 'No phase progress plan published.'; wrapper.appendChild(progressNode); const actionsNode = document.createElement('div'); actionsNode.className = 'chat-quick-actions'; const actions = Array.isArray(card.actions) ? card.actions : []; actions.forEach((action) => {{ const button = document.createElement('button'); button.type = 'button'; button.className = 'chat-quick-btn'; button.textContent = safeText(action.label, 'Action'); button.title = action.enabled ? safeText(action.disabled_reason || action.plan_summary, '') : safeText(action.disabled_reason, 'Unavailable'); button.disabled = operatorActionInFlight || !action.enabled; button.addEventListener('click', () => handleObjectiveCardAction(action)); actionsNode.appendChild(button); }}); wrapper.appendChild(actionsNode); const artifacts = card.artifacts && typeof card.artifacts === 'object' ? card.artifacts : {{}}; const artifactNode = document.createElement('div'); artifactNode.className = 'collection-text muted'; artifactNode.textContent = `Updated: ${{safeText(artifacts.updated_at, 'unknown')}} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· Files: ${{Array.isArray(artifacts.files_changed) ? artifacts.files_changed.length : 0}} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· Checks: ${{Array.isArray(artifacts.validation_checks) ? artifacts.validation_checks.length : 0}} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· Rollback: ${{safeText(artifacts.rollback_state, 'not_needed')}}`; wrapper.appendChild(artifactNode); objectiveCardsList.appendChild(wrapper); }}); }}
@@ -9907,7 +10036,14 @@ async def tod_console(request: Request) -> HTMLResponse:
     async function sendChatMessage(event) {{ event.preventDefault(); if (selectedComposerImage instanceof File) {{ await uploadComposerImage(); return; }} await sendChatPrompt(chatInput.value, 'TOD replied on this operator channel.'); }}
     async function handleQuickAction(actionId) {{ const action = chatQuickActionMap.get(String(actionId || '')); if (!action || !action.prompt) {{ chatStatus.textContent = 'That TOD quick action is not available right now.'; return; }} if (chatInput) chatInput.value = action.prompt; if (safeText(action.actionType, 'prompt') === 'handoff') {{ await createCopilotHandoff(action.prompt, `${{safeText(action.label, 'Quick action')}} created a Codex handoff.`); return; }} await sendChatPrompt(action.prompt, `${{safeText(action.label, 'Quick action')}} sent to TOD.`); }}
     function renderState(data) {{ const status = data && typeof data.status === 'object' ? data.status : {{}}; const quickFacts = data && typeof data.quick_facts === 'object' ? data.quick_facts : {{}}; const execution = data && typeof data.execution === 'object' ? data.execution : {{}}; const training = data && typeof data.training_status === 'object' ? data.training_status : {{}}; const objectiveCards = Array.isArray(data && data.objective_cards) ? data.objective_cards : []; const phaseProgress = execution.phase_progress && typeof execution.phase_progress === 'object' ? execution.phase_progress : {{}}; const stallSignal = execution.stall_signal && typeof execution.stall_signal === 'object' ? execution.stall_signal : {{}}; const stallLevel = safeText(stallSignal.level, 'ok').toLowerCase(); const alignment = data && typeof data.objective_alignment === 'object' ? data.objective_alignment : {{}}; const evidence = data && typeof data.bridge_canonical_evidence === 'object' ? data.bridge_canonical_evidence : {{}}; const liveTask = data && typeof data.live_task_request === 'object' ? data.live_task_request : {{}}; const decision = data && typeof data.listener_decision === 'object' ? data.listener_decision : {{}}; const publish = data && typeof data.publish === 'object' ? data.publish : {{}}; const authority = data && typeof data.authority_reset === 'object' ? data.authority_reset : {{}}; latestConversation = data && typeof data.conversation === 'object' ? data.conversation : null; currentStatusCode = safeText(status.code, 'unknown').toLowerCase(); if (buildTagEl) buildTagEl.textContent = `UI_BUILD_ID = ${{safeText(data.runtime_build, 'unified-console-recovery-v1')}}`; const sharedTruthPrimary = ['blocked_with_reason', 'accepted_complete', 'accepted_complete_pending_mim_refresh', 'replay_or_replan_required', 'disagreement', 'stale'].includes(currentStatusCode); renderQuickActions(latestConversation); renderExecution(execution); renderTraining(training); renderTopActivity(); renderPrimaryStatus(status, execution); renderTodActivityStrip(status, execution); renderObjectiveCards(objectiveCards); renderOperatorActions(data.operator_actions || []); renderOperatorTimeline(data.operator_activity_timeline || []); renderOperatorEvidence(data.operator_evidence || {{}}); if (alignmentQuickActionPanel) alignmentQuickActionPanel.hidden = ['aligned'].includes(safeText(status.code, 'unknown').toLowerCase()); setConsoleLight(todConsoleLight, ['aligned'].includes(safeText(status.code, 'unknown').toLowerCase())); setConsoleLight(mimConsoleLight, Boolean(data.mim_status && data.mim_status.available)); factCanonicalObjective.textContent = safeText(quickFacts.canonical_objective, 'Unknown'); factCanonicalMeta.textContent = safeText(data.mim_status && data.mim_status.generated_age, 'Unknown'); factLiveObjective.textContent = safeText(quickFacts.live_request_objective, 'Unknown'); factLiveMeta.textContent = `Request age: ${{safeText(liveTask.generated_age, 'Unknown')}}`; factAlignment.textContent = safeText(alignment.status, 'unknown').replaceAll('_', ' '); factAlignmentMeta.textContent = safeText(alignment.summary, 'No alignment summary'); factListenerState.textContent = safeText(quickFacts.listener_state, 'unknown'); factListenerMeta.textContent = safeText(decision.summary, 'No listener decision summary'); if (factPhaseProgressLabel) factPhaseProgressLabel.textContent = Boolean(phaseProgress.available) && !sharedTruthPrimary ? safeText(phaseProgress.label, 'Phase Progress') : 'Phase Progress'; factPhaseProgress.textContent = Boolean(phaseProgress.available) && !sharedTruthPrimary ? `${{Math.max(0, Math.min(100, Number(phaseProgress.percent_complete || 0)))}}%` : 'Unknown'; factPhaseProgressMeta.textContent = Boolean(phaseProgress.available) && !sharedTruthPrimary ? safeText(phaseProgress.summary, 'No phase progress summary.') : safeText(status.summary, 'Waiting for bounded execution progress.'); factStallWatch.textContent = stallSignal.flagged ? 'Probable stall' : stallLevel === 'implementation_pending' ? 'Held at gate' : sharedTruthPrimary ? 'Not a stall' : execution.available ? 'Clear' : 'Unknown'; factStallWatchMeta.textContent = sharedTruthPrimary ? safeText(status.summary, 'Shared truth superseded the older stall view.') : stallLevel !== 'ok' ? safeText(stallSignal.summary, stallSignal.flagged ? 'Probable stall detected.' : 'Implementation is pending.') : execution.available ? `Last update: ${{formatSeconds(execution.last_update_age_seconds)}} ago.` : 'Waiting for execution freshness evidence.'; factPublishStatus.textContent = safeText(quickFacts.publish_status, 'unknown'); factPublishMeta.textContent = safeText(publish.summary, 'No publish summary'); factAuthorityReset.textContent = safeText(quickFacts.authority_reset, 'Inactive'); factAuthorityMeta.textContent = authority.active ? safeText(authority.reason, 'Authority reset active') : 'No authority reset is active.'; renderGuidance(data.operator_guidance || []); renderHandoffs(data.recent_handoffs || []); publishSummary.textContent = safeText(publish.summary, 'No publish summary'); publishMirror.textContent = safeText(publish.mim_mirror_status, 'Unknown'); publishAccess.textContent = safeText(publish.remote_access_status, 'Unknown'); publishConsumer.textContent = safeText(publish.consumer_status, 'Unknown'); publishTime.textContent = `${{safeText(publish.uploaded_at, 'Unknown')}} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${{safeText(publish.uploaded_age, 'Unknown')}}`; publishError.textContent = safeText(publish.error, 'None'); alignmentSummary.textContent = safeText(alignment.summary, 'No alignment summary'); alignmentTodObjective.textContent = safeText(alignment.tod_current_objective, 'Unknown'); alignmentMimObjective.textContent = safeText(alignment.mim_objective_active, 'Unknown'); alignmentEvidence.textContent = safeText(evidence.status, 'Unknown'); alignmentSignals.textContent = Array.isArray(evidence.failure_signals) && evidence.failure_signals.length ? evidence.failure_signals.join(', ') : 'None'; decisionSummary.textContent = safeText(decision.summary, 'No listener decision summary'); decisionOutcome.textContent = safeText(decision.decision_outcome, 'Unknown'); decisionReason.textContent = safeText(decision.reason_code, 'Unknown'); decisionState.textContent = safeText(decision.execution_state, 'Unknown'); decisionNextStep.textContent = safeText(decision.next_step_recommendation, 'Unknown'); decisionAge.textContent = safeText(decision.generated_age, 'Unknown'); authoritySummary.textContent = authority.active ? safeText(authority.reason, 'Authority reset is active.') : 'Authority reset is inactive.'; authorityCurrent.textContent = safeText(authority.authoritative_current_objective, 'Unknown'); authorityMaxValid.textContent = safeText(authority.max_valid_objective, 'Unknown'); authorityEffective.textContent = authority.active ? `${{safeText(authority.effective_at, 'Unknown')}} ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· ${{safeText(authority.effective_age, 'Unknown')}}` : 'Inactive'; authorityInvalidated.textContent = Array.isArray(authority.invalidated_objectives) && authority.invalidated_objectives.length ? authority.invalidated_objectives.join(', ') : 'None'; footerGenerated.textContent = `Generated: ${{safeText(data.generated_at, 'Unknown')}}`; }}
-    async function refresh() {{ if (refreshInFlight) return; if (document.hidden) {{ if (chatStatus) chatStatus.dataset.pollBackoffReason = 'hidden_tab_paused'; return; }} refreshInFlight = true; try {{ const res = await fetch('/tod/ui/state', {{ cache: 'no-store' }}); if (!res.ok) throw new Error(`tod-ui-state-${{res.status}}`); const data = await res.json(); renderState(data); await refreshChatState({{ once: true }}); }} finally {{ refreshInFlight = false; }} }}
+    const renderStateBase = renderState;
+    function renderStateWithOperatorWorkspace(data) {{
+        renderStateBase(data);
+        const workspace = data && typeof data.operator_workspace === 'object' ? data.operator_workspace : {{}};
+        renderOperatorWorkspace(workspace);
+        if (buildTagEl) buildTagEl.textContent = `UI_BUILD_ID = ${{safeText(data && data.runtime_build, 'tod-live-workspace-v2')}}`;
+    }}
+    async function refresh() {{ if (refreshInFlight) return; if (document.hidden) {{ if (chatStatus) chatStatus.dataset.pollBackoffReason = 'hidden_tab_paused'; return; }} refreshInFlight = true; try {{ const res = await fetch('/tod/ui/state', {{ cache: 'no-store' }}); if (!res.ok) throw new Error(`tod-ui-state-${{res.status}}`); const data = await res.json(); renderStateWithOperatorWorkspace(data); await refreshChatState({{ once: true }}); }} finally {{ refreshInFlight = false; }} }}
     chatForm.addEventListener('submit', sendChatMessage);
     if (chatImageUploadButton && chatImageUploadInput) {{ chatImageUploadButton.addEventListener('click', () => chatImageUploadInput.click()); chatImageUploadInput.addEventListener('change', () => {{ const file = chatImageUploadInput.files && chatImageUploadInput.files[0] ? chatImageUploadInput.files[0] : null; if (file) setComposerImage(file); }}); }}
     if (chatImageRemoveButton) chatImageRemoveButton.addEventListener('click', resetComposerImage);
