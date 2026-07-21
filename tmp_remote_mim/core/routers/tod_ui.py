@@ -2789,6 +2789,102 @@ def _build_tod_status_truth_object(state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _build_tod_operator_workspace(state: dict[str, Any]) -> dict[str, Any]:
+    """Build the compact live-work model used by the Studio TOD page."""
+    state = state if isinstance(state, dict) else {}
+    execution = state.get("execution") if isinstance(state.get("execution"), dict) else {}
+    truth = state.get("tod_status_truth") if isinstance(state.get("tod_status_truth"), dict) else _build_tod_status_truth_object(state)
+    training = state.get("training_status") if isinstance(state.get("training_status"), dict) else {}
+    actions = state.get("operator_actions") if isinstance(state.get("operator_actions"), list) else []
+
+    status_code = _compact_text(truth.get("status_code") or execution.get("activity_state"), 80) or "idle"
+    status_label = _compact_text(truth.get("status_label") or execution.get("activity_label"), 80) or status_code.replace("_", " ").title()
+    objective_id = _compact_text(truth.get("objective_id") or execution.get("objective_id"), 180)
+    task_id = _compact_text(truth.get("task_id") or execution.get("task_id"), 180)
+    current_action = _clean_operator_status_text(
+        _pick_first_text(truth.get("current_action"), execution.get("current_action"), execution.get("activity_summary"), execution.get("summary")),
+        320,
+    )
+    blocker = _clean_operator_status_text(
+        _pick_first_text(truth.get("blocker"), execution.get("wait_reason"), execution.get("wait_target_label"), execution.get("wait_target")),
+        320,
+    )
+    next_action = _clean_operator_status_text(
+        _pick_first_text(truth.get("next_action"), execution.get("next_step"), execution.get("next_validation")),
+        360,
+    )
+    last_update_at = _pick_first_text(truth.get("last_update_at"), execution.get("updated_at"), state.get("generated_at"))
+    source_artifacts = truth.get("source_artifacts") if isinstance(truth.get("source_artifacts"), dict) else {}
+
+    feed_state = {
+        **state,
+        "tod_status_truth": truth,
+        "execution": execution,
+    }
+    timeline: list[dict[str, Any]] = []
+    for index, message in enumerate(_build_execution_feed_messages(feed_state)[:16]):
+        if not isinstance(message, dict):
+            continue
+        content = _clean_operator_status_text(message.get("content"), 700)
+        if not content:
+            continue
+        first_line = content.splitlines()[0].strip()
+        label = first_line
+        detail = content
+        if ":" in first_line:
+            prefix, rest = first_line.split(":", 1)
+            if prefix.strip().lower() in {"action", "target", "status", "result", "reason", "next", "retry"}:
+                label = rest.strip() or prefix.strip()
+        timeline.append(
+            {
+                "id": f"event-{index + 1}",
+                "role": str(message.get("role") or "system").strip(),
+                "label": _compact_text(label, 110),
+                "summary": _compact_text(first_line, 180),
+                "detail": detail,
+                "created_at": str(message.get("created_at") or last_update_at or "").strip(),
+                "created_age": _format_age(message.get("created_at") or last_update_at),
+            }
+        )
+
+    queue_items = []
+    for action in actions[:12]:
+        if not isinstance(action, dict):
+            continue
+        queue_items.append(
+            {
+                "id": str(action.get("id") or "").strip(),
+                "label": str(action.get("label") or action.get("id") or "").strip(),
+                "enabled": bool(action.get("enabled")),
+                "disabled_reason": _compact_text(action.get("disabled_reason"), 180),
+            }
+        )
+
+    return {
+        "schema_version": "tod-operator-workspace-v1",
+        "status_code": status_code,
+        "status_label": status_label,
+        "blocked": bool(truth.get("blocked")),
+        "current_phase": _compact_text(truth.get("current_phase"), 80) or ("Recovery" if truth.get("blocked") else "Execution"),
+        "working": current_action or "No active TOD work is currently published.",
+        "target": _pick_first_text(task_id, objective_id, "No active target published."),
+        "objective_id": objective_id,
+        "task_id": task_id,
+        "elapsed": _format_age(last_update_at),
+        "waiting": blocker if truth.get("blocked") else "",
+        "next_action": next_action or "Wait for the next fresh TOD execution artifact.",
+        "dave_needed": str(truth.get("dave_needed") or "no").strip(),
+        "training": {
+            "active": bool(training.get("active")),
+            "state": str(training.get("state_label") or training.get("state") or "").strip(),
+            "current_step": _compact_text(training.get("current_step") or training.get("summary"), 220),
+        },
+        "timeline": timeline,
+        "controls": queue_items,
+        "source_artifacts": source_artifacts,
+    }
+
+
 def _normalize_execution_status(
     active_objective_payload: Any,
     active_task_payload: Any,
@@ -8477,6 +8573,13 @@ def _build_tod_console_state() -> dict[str, Any]:
     status_truth = _build_tod_status_truth_object(operator_state)
     execution_status["status_truth"] = status_truth
     operator_state["tod_status_truth"] = status_truth
+    operator_workspace = _build_tod_operator_workspace(
+        {
+            **operator_state,
+            "operator_actions": operator_actions,
+            "tod_status_truth": status_truth,
+        }
+    )
     objective_cards = _build_objective_cards(
         {
             "execution": execution_status,
@@ -8570,6 +8673,7 @@ def _build_tod_console_state() -> dict[str, Any]:
         "quick_facts": quick_facts,
         "training_status": training_status,
         "tod_status_truth": status_truth,
+        "operator_workspace": operator_workspace,
         "execution": execution_status,
         "shared_truth": shared_truth_payload,
         "objective_cards": objective_cards,

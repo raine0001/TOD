@@ -14,6 +14,7 @@ from unittest.mock import patch
 
 REPO_ROOT = Path(__file__).resolve().parent
 ROUTER_PATH = REPO_ROOT / "tmp_remote_mim" / "core" / "routers" / "tod_ui.py"
+STUDIO_ROUTER_PATH = REPO_ROOT / "tmp_remote_mim" / "core" / "routers" / "studio.py"
 
 
 def load_tod_ui_module() -> types.ModuleType:
@@ -45,6 +46,7 @@ def load_tod_ui_module() -> types.ModuleType:
     fastapi_module.Body = lambda *args, **kwargs: None
     fastapi_module.HTTPException = HTTPExceptionStub
     fastapi_module.Query = lambda *args, **kwargs: None
+    fastapi_module.Request = object
 
     responses_module = types.ModuleType("fastapi.responses")
     responses_module.FileResponse = object
@@ -191,7 +193,8 @@ class TodUiStateClassificationTests(unittest.TestCase):
         self.assertEqual(quick_actions["send-to-copilot"]["label"], "Send To Codex")
 
     def test_tod_console_includes_copy_last_reply_button(self) -> None:
-        html = asyncio.run(self.tod_ui.tod_console())
+        request = types.SimpleNamespace(query_params={})
+        html = asyncio.run(self.tod_ui.tod_console(request))
 
         self.assertIn("Copy Last TOD Reply", html)
         self.assertIn("copyLastTodResponseButton", html)
@@ -274,10 +277,9 @@ class TodUiStateClassificationTests(unittest.TestCase):
 
         messages = self.tod_ui._build_execution_feed_messages(state)
         contents = [item["content"] for item in messages]
-        self.assertEqual(
-            contents[0],
-            "TOD is executing: Make TOD a local execution agent.\nLast heartbeat: unknown.",
-        )
+        self.assertTrue(contents[0].startswith("TOD status: Working."))
+        self.assertIn("Current action:", contents[0])
+        self.assertIn("Last heartbeat: unknown.", contents[0])
         selected_task = next(item for item in contents if item.startswith("Action: selected_task"))
         running_test = next(item for item in contents if item.startswith("Action: running_test"))
 
@@ -364,7 +366,9 @@ class TodUiStateClassificationTests(unittest.TestCase):
         contents = [item["content"] for item in messages]
         blocked = next(item for item in contents if item.startswith("Action: blocked_with_reason"))
 
-        self.assertEqual(contents[0], "TOD is blocked: waiting on next bounded step.\nLast heartbeat: unknown.")
+        self.assertTrue(contents[0].startswith("TOD status: Stalled."))
+        self.assertIn("Blocker: Probable stall:", contents[0])
+        self.assertIn("Last heartbeat: unknown.", contents[0])
         self.assertIn("Status: blocked", blocked)
         self.assertIn(
             "Result: Probable stall: Phase 1 is holding at 30% for about 30m without a newer execution update.",
@@ -846,10 +850,9 @@ class TodUiStateClassificationTests(unittest.TestCase):
         binding_blocked = next(item for item in contents if item.startswith("Action: blocked_missing_local_executor_binding"))
         inspect = next(item for item in contents if item.startswith("Action: inspecting_file"))
 
-        self.assertEqual(
-            contents[0],
-            "TOD is blocked: missing local executor binding scripts/engines/LocalExecutionEngine.ps1::Invoke-LocalExecutionEngine.\nLast heartbeat: unknown.",
-        )
+        self.assertTrue(contents[0].startswith("TOD status: Waiting."))
+        self.assertIn("Blocker:", contents[0])
+        self.assertIn("Last heartbeat: unknown.", contents[0])
         self.assertIn("Status: created", created)
         self.assertIn("Target: Implement the next bounded execution-loop slice in the inspected surfaces and rerun the focused validation path.", created)
         self.assertIn("Status: missing", binding_checked)
@@ -880,7 +883,9 @@ class TodUiStateClassificationTests(unittest.TestCase):
         contents = [item["content"] for item in messages]
 
         self.assertFalse(any(item == "Updated: 8m ago" for item in contents))
-        self.assertEqual(contents[0], "TOD is blocked: waiting on TOD local executor.\nLast heartbeat: 8m ago.")
+        self.assertTrue(contents[0].startswith("TOD status: Waiting."))
+        self.assertIn("TOD is waiting on a local executor retry.", contents[0])
+        self.assertIn("Last heartbeat: 8m ago.", contents[0])
 
     def test_execution_feed_structured_cards_include_action_target_and_status(self) -> None:
         state = {
@@ -927,7 +932,9 @@ class TodUiStateClassificationTests(unittest.TestCase):
         contents = [item["content"] for item in messages]
         idle_event = next(item for item in contents if item.startswith("Action: idle_no_eligible_work"))
 
-        self.assertEqual(contents[0], "TOD is idle: no eligible work selected.\nLast heartbeat: 2m ago.")
+        self.assertTrue(contents[0].startswith("TOD status: Idle."))
+        self.assertIn("No eligible active work is published.", contents[0])
+        self.assertIn("Last heartbeat: 2m ago.", contents[0])
         self.assertIn("Status: idle", idle_event)
         self.assertIn("Reason: No eligible work is currently selected for execution.", idle_event)
         self.assertIn("Next: Check the next eligible source.", idle_event)
@@ -957,7 +964,9 @@ class TodUiStateClassificationTests(unittest.TestCase):
         command_event = next(item for item in contents if item.startswith("Action: running_command"))
         test_event = next(item for item in contents if item.startswith("Action: running_test"))
 
-        self.assertEqual(contents[0], "TOD is executing: /home/testpilot/mim/core/tod_execution_loop.py.\nLast heartbeat: 12s ago.")
+        self.assertTrue(contents[0].startswith("TOD status: Working."))
+        self.assertIn("Editing core/tod execution loop.py", contents[0])
+        self.assertIn("Last heartbeat: 12s ago.", contents[0])
         self.assertIn("Target: /home/testpilot/mim/core/tod_execution_loop.py", edit_event)
         self.assertIn("Status: executing", edit_event)
         self.assertIn("Result: /home/testpilot/mim/core/tod_execution_loop.py", edit_event)
@@ -966,8 +975,70 @@ class TodUiStateClassificationTests(unittest.TestCase):
         self.assertIn("Target: python -m unittest test_tmp_remote_mim_tod_ui_state.TodUiStateClassificationTests", test_event)
         self.assertIn("Status: running", test_event)
 
+    def test_operator_workspace_projects_blocked_execution_without_progress_bars(self) -> None:
+        state = {
+            "generated_at": "2026-07-21T21:50:07Z",
+            "execution": {
+                "available": True,
+                "updated_at": "2026-07-21T21:50:07Z",
+                "activity_label": "Binding Required",
+                "activity_state": "blocked",
+                "execution_state": "blocked",
+                "objective_id": "MIM-GROWTH-DEPENDENCY-REDUCTION-NEXT-V1",
+                "task_id": "mim-growth-dependency-reduction-next-v1-mim-request-c0b004d4",
+                "current_action": "Blocked execution on an explicit engine/runtime blocker and published the blocker evidence.",
+                "wait_reason": "Executor binding is missing for the queued objective step.",
+                "next_step": "Materialize a local executor binding and republish execute-chat-task.",
+                "validation_checks": [
+                    {"name": "bounded_edit_materialization", "passed": False},
+                ],
+            },
+            "tod_status_truth": {
+                "status_code": "blocked",
+                "status_label": "Binding Required",
+                "blocked": True,
+                "current_phase": "Recover",
+                "current_action": "Blocked execution on an explicit engine/runtime blocker and published the blocker evidence.",
+                "blocker": "Executor binding is missing for the queued objective step.",
+                "next_action": "Materialize a local executor binding and republish execute-chat-task.",
+                "objective_id": "MIM-GROWTH-DEPENDENCY-REDUCTION-NEXT-V1",
+                "task_id": "mim-growth-dependency-reduction-next-v1-mim-request-c0b004d4",
+                "last_update_at": "2026-07-21T21:50:07Z",
+                "dave_needed": "no",
+            },
+            "operator_actions": [
+                {"id": "retry", "label": "Retry execution", "enabled": False, "disabled_reason": "Waiting for executor binding"},
+                {"id": "evidence", "label": "Open evidence", "enabled": True},
+            ],
+        }
+
+        workspace = self.tod_ui._build_tod_operator_workspace(state)
+
+        self.assertEqual(workspace["schema_version"], "tod-operator-workspace-v1")
+        self.assertTrue(workspace["blocked"])
+        self.assertEqual(workspace["current_phase"], "Recover")
+        self.assertIn("runtime blocker", workspace["working"])
+        self.assertIn("executor binding", workspace["waiting"].lower())
+        self.assertIn("execute-chat-task", workspace["next_action"])
+        self.assertEqual(len(workspace["controls"]), 2)
+        self.assertTrue(workspace["timeline"])
+        self.assertNotIn("phase_progress", workspace)
+        self.assertNotIn("percent_complete", json.dumps(workspace))
+
+    def test_studio_tod_body_uses_live_execution_workspace_controls(self) -> None:
+        source = STUDIO_ROUTER_PATH.read_text(encoding="utf-8")
+
+        self.assertIn("TOD Live Execution", source)
+        self.assertIn('id="todExecutionBanner"', source)
+        self.assertIn('id="todControlList"', source)
+        self.assertIn("tod-message-tools", source)
+        self.assertIn("Create Objective", source)
+        self.assertNotIn('id="todLifecycle"', source)
+        self.assertNotIn("tod-phase-track", source)
+
     def test_tod_console_includes_phase_progress_fact_cards(self) -> None:
-        html = asyncio.run(self.tod_ui.tod_console())
+        request = types.SimpleNamespace(query_params={})
+        html = asyncio.run(self.tod_ui.tod_console(request))
 
         self.assertIn("factPhaseProgress", html)
         self.assertIn("factStallWatch", html)
