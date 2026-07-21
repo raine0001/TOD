@@ -1033,6 +1033,8 @@ class TodUiStateClassificationTests(unittest.TestCase):
         self.assertIn('id="todControlList"', source)
         self.assertIn("tod-message-tools", source)
         self.assertIn("Create Objective", source)
+        self.assertIn("Execution events stay in live activity", source)
+        self.assertIn("tod-execution-banner{display:none", source)
         self.assertNotIn('id="todLifecycle"', source)
         self.assertNotIn("tod-phase-track", source)
 
