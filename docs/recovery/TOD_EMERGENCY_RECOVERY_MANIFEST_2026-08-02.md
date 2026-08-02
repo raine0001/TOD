@@ -28,6 +28,17 @@ Rebuild the TOD workstation after loss of the current Windows installation or ha
   - `E:` 931.5 GB total
   - `F:` 1,907.7 GB total
 
+## Verified secondary recovery copy
+
+- Destination: separate external USB NVMe volume `F:` under `F:\TOD-Recovery\2026-08-02`.
+- Git bundle: `TOD-repository-all-refs.bundle`.
+- Git bundle bytes: 109,705,779.
+- Git bundle SHA-256: `A97FDBDCE4E1CD0CD29758C8945A54D30F8220D74379C072E2DEAC6B24D7B0B1`.
+- `git bundle verify`: pass; emergency branch included.
+- Model copy: 41 files and 56,429,215,604 source bytes.
+- Model verification: every source/destination file pair compared by SHA-256; zero mismatches.
+- Encryption boundary: this session could not prove BitLocker status on `F:` without elevation. Only non-secret Git/model assets were copied. Databases, credentials, `.env` values, keys, and runtime state were not copied to the encryption-unverified volume.
+
 ## What Git recovers
 
 1. TOD source, tests, scripts, checked-in configuration, training documents, and product-code mirrors intentionally tracked by the repository.
@@ -65,7 +76,8 @@ The following assets must be copied to an encrypted destination on independent s
 
 ## Current recovery gaps
 
-- The source snapshot is suitable for Git, but encrypted off-box copies of model weights, local databases, runtime state, and credentials have not yet been proven in this manifest.
+- The source snapshot is on GitHub, and model weights plus a complete Git bundle have a verified second physical copy on `F:`. That external volume is not proven encrypted or off-site.
+- Encrypted off-box copies of local databases, required runtime state, and credentials have not yet been proven in this manifest.
 - The ProjectManager hosted-source archive transfer and isolated restore validation are still in progress.
 - An elevated Defender Offline scan has not been run because it requires a reboot and would interrupt active preservation work.
 - A full bare-metal image is not present in Git and should not be placed there.
