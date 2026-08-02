@@ -1306,3 +1306,23 @@ Independent Demonstration: pending; TOD must independently implement a new progr
 Freeze: deployed evidence preserved; rollback backups and guarded hashes are recorded in the deployment artifacts.
 
 Retirement: open.
+
+### APP-TOD-053: Workstation Security Triage and Disaster-Recovery Preservation
+
+Borrowed From: Codex emergency workstation-security and recovery bridge.
+
+Reason: TOD received a bounded read-only malware-triage task as `TSK-0041`, but LocalExecutionEngine returned `blocked_missing_capability` because it cannot collect Windows Defender, process, network, persistence, driver, or recovery telemetry. Dave then explicitly assigned the emergency recovery work directly to Codex.
+
+Incident: `TOD-WORKSTATION-SECURITY-AND-RECOVERY-20260802`
+
+Capability: Perform evidence-first Windows security triage without killing ambiguous processes; run and verify Defender scans; classify process, publisher, lineage, persistence, network, driver, and crash evidence; preserve active critical transfers; create secret-safe Git recovery snapshots; distinguish Git recovery from encrypted database, runtime, model, credential, and bare-metal recovery; and prove remote/off-device copies by hash and restore checks.
+
+Current Apprentice: TOD
+
+Progress: `borrowed`; Defender quick scan and deep process/persistence review found zero active threats and no high-confidence process requiring containment. Codex created and pushed the emergency Git branch, verified the advertised remote commit, created and verified a separate Git bundle, and copied all 41 model files to a separate physical volume with zero SHA-256 mismatches. Evidence: `runtime_remote_training/read_only_audit_artifacts/workstation_security/TOD-WORKSTATION-SECURITY-TRIAGE-20260802.md` and `docs/recovery/TOD_EMERGENCY_RECOVERY_MANIFEST_2026-08-02.md`.
+
+Independent Demonstration: pending; TOD must independently perform a fresh Windows security inventory, publish a confidence-scored containment decision, create a secret-safe recovery snapshot, and prove a clean restore without Codex executing the telemetry or backup workflow.
+
+Freeze: pending native Windows security telemetry collector, encrypted non-Git backup workflow, isolated restore rehearsal, and independent TOD proof.
+
+Retirement: open.
