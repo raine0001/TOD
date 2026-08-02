@@ -42,6 +42,7 @@ Describe 'TOD codex execution evidence repair' {
 
         Import-ScriptFunction -ScriptPath $todScript -Name 'Get-UtcNow'
         Import-ScriptFunction -ScriptPath $todScript -Name 'Resolve-TaskCategory'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Get-TodTaskIdentity'
         Import-ScriptFunction -ScriptPath $todScript -Name 'Convert-EngineResultToNormalizedEnvelope'
         Import-ScriptFunction -ScriptPath $todScript -Name 'Normalize-EngineResultPayload'
         Import-ScriptFunction -ScriptPath $todScript -Name 'Test-EngineResultPrecheck'
@@ -52,6 +53,10 @@ Describe 'TOD codex execution evidence repair' {
         Import-ScriptFunction -ScriptPath $todScript -Name 'Resolve-LocalExecutionTaskClass'
         Import-ScriptFunction -ScriptPath $todScript -Name 'Test-LocalExecutionPatchRequired'
         Import-ScriptFunction -ScriptPath $todScript -Name 'Get-LocalExecutionNoOpAssessment'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Test-TodWrapperOnlyChangedPath'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Get-NormalizedObjectiveToken'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Get-LocalExecutionRequiredValidationFailures'
+        Import-ScriptFunction -ScriptPath $todScript -Name 'Get-TodMaterialImplementationProofAssessment'
         Import-ScriptFunction -ScriptPath $todScript -Name 'Publish-LocalExecutionArtifacts'
 
         Import-ScriptFunction -ScriptPath $codexScript -Name 'Get-CodexExecutionEngineSpec'

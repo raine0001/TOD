@@ -9,7 +9,7 @@
     "win-openblas-x64.zip"
   ],
   "server_exe": "tools/llama.cpp/llama-server.exe",
-  "default_model_path": "models/tod/Qwen2.5-3B-Instruct-Q4_K_M.gguf",
+  "default_model_path": "models/tod/qwen2.5-coder-7b-instruct-q4_k_m.gguf",
   "host": "127.0.0.1",
   "port": 8008,
   "context_size": 4096,

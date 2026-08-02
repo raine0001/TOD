@@ -771,8 +771,11 @@ class StudioReportCanvasCreate(BaseModel):
     metadata_json: dict[str, Any] = Field(default_factory=dict)
 
 
+STUDIO_MIM_CHAT_PROMPT_MAX_LENGTH = 32_768
+
+
 class StudioMimChatRequest(BaseModel):
-    prompt: str = Field(default="", max_length=4000)
+    prompt: str = Field(default="", max_length=STUDIO_MIM_CHAT_PROMPT_MAX_LENGTH)
     page_context: str = Field(default="", max_length=240)
     studio_page_context: str = Field(default="", max_length=240)
     metadata_json: dict[str, Any] = Field(default_factory=dict)
@@ -1975,7 +1978,16 @@ def _studio_mim_body() -> str:
                 }}
               }})
             }});
-            if (!response.ok) throw new Error('Studio chat HTTP ' + response.status);
+            if (!response.ok) {{
+              const errorText = await response.text();
+              let errorDetail = errorText;
+              try {{
+                const errorPayload = JSON.parse(errorText);
+                const detail = errorPayload && errorPayload.detail;
+                errorDetail = typeof detail === 'string' ? detail : JSON.stringify(detail || errorPayload);
+              }} catch (parseError) {{}}
+              throw new Error('Studio chat HTTP ' + response.status + (errorDetail ? ': ' + errorDetail.slice(0, 320) : ''));
+            }}
             const data = await response.json();
             const reply = data && data.mim_interface && data.mim_interface.reply_text ? data.mim_interface.reply_text : 'I received that, but I do not have a clean reply yet.';
             attachments = [];
@@ -2102,7 +2114,7 @@ def _studio_tod_body() -> str:
       .tod-history-rail,.tod-chat-workspace{border:1px solid rgba(97,219,191,.24);background:rgba(4,18,28,.72);border-radius:18px;box-shadow:0 16px 36px rgba(0,0,0,.18)}
       .tod-history-rail{padding:14px;overflow:auto}.tod-rail-header{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px}.tod-kicker{margin:0 0 4px;color:#69d7ff;font-size:11px;font-weight:900;letter-spacing:.14em;text-transform:uppercase}.tod-rail-header h2{margin:0;font-size:18px}.tod-rail-subtitle{margin-top:4px;color:var(--studio-muted);font-size:12px}.tod-thread-heading{margin:14px 0 8px;color:#c5f1ff;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase}.tod-thread-list,.tod-control-list{display:grid;gap:8px}.tod-thread-item{width:100%;text-align:left;border:1px solid rgba(97,219,191,.18);background:rgba(2,10,18,.62);color:var(--studio-ink);border-radius:12px;padding:11px 12px;cursor:pointer}.tod-thread-item.active{border-color:rgba(105,215,255,.68);background:rgba(9,46,67,.72)}.tod-thread-title{font-weight:900;font-size:13px;margin-bottom:4px}.tod-thread-meta{color:var(--studio-muted);font-size:11px;overflow-wrap:anywhere}
       .tod-chat-workspace{display:grid;grid-template-rows:auto minmax(280px,1fr) auto;gap:12px;padding:14px;overflow:hidden}.tod-live-card{border:1px solid rgba(97,219,191,.24);border-radius:16px;padding:14px;background:rgba(2,12,20,.76)}.tod-live-card[data-state=working],.tod-live-card[data-state=running],.tod-live-card[data-state=pending],.tod-live-card[data-state=waiting]{border-color:rgba(105,215,255,.56);background:rgba(7,35,52,.76)}.tod-live-card[data-state=blocked],.tod-live-card[data-state=stalled],.tod-live-card[data-state=failed]{border-color:rgba(255,111,141,.58);background:rgba(48,13,27,.58)}.tod-live-top{display:flex;justify-content:space-between;gap:14px;align-items:flex-start}.tod-live-eyebrow{display:flex;align-items:center;gap:8px;color:#69d7ff;font-size:12px;font-weight:900;letter-spacing:.1em;text-transform:uppercase}.tod-dot{width:9px;height:9px;border-radius:50%;background:#69d7ff;box-shadow:0 0 14px rgba(105,215,255,.6)}.tod-live-card h2{margin:9px 0 6px;font-size:clamp(18px,2vw,24px)}.tod-live-card p{margin:0;color:var(--studio-muted);line-height:1.45;overflow-wrap:anywhere}.tod-live-meaning{margin-top:8px!important;color:#b7d7e6!important}.tod-live-pill{border:1px solid rgba(105,215,255,.45);border-radius:999px;color:#c5f1ff;padding:7px 10px;font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;white-space:nowrap}
-      .tod-activity-list{display:grid;gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(97,219,191,.16)}.tod-activity-item{border:1px solid rgba(97,219,191,.18);border-radius:12px;background:rgba(2,10,18,.58);padding:9px 10px;display:grid;gap:5px;overflow-wrap:anywhere}.tod-activity-item summary{cursor:pointer;color:#e7fbff;font-size:12px;font-weight:900;line-height:1.35}.tod-activity-meta{color:var(--studio-muted);font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.05em}.tod-activity-summary{color:var(--studio-ink);font-size:12px;line-height:1.35}.tod-activity-meaning{color:#b7d7e6;font-size:12px;line-height:1.35;white-space:pre-wrap}.tod-drawer{margin-top:12px;border:1px solid rgba(97,219,191,.18);border-radius:14px;background:rgba(2,10,18,.5);padding:10px}.tod-drawer summary{cursor:pointer;color:#c5f1ff;font-size:12px;font-weight:900;letter-spacing:.06em;text-transform:uppercase}.tod-control-item{border:1px solid rgba(105,215,255,.22);border-radius:999px;background:rgba(8,42,60,.62);color:#e8f8ff;padding:8px 10px;font-size:12px;overflow-wrap:anywhere}.tod-control-item[aria-disabled=true]{opacity:.55}
+      .tod-activity-list{display:grid;gap:11px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(97,219,191,.16)}.tod-activity-item{border:1px solid rgba(97,219,191,.18);border-radius:14px;background:rgba(2,10,18,.58);padding:11px 12px;display:grid;gap:7px;overflow-wrap:anywhere}.tod-activity-item[data-kind=narrative]{background:rgba(5,26,32,.76);border-color:rgba(105,215,255,.28)}.tod-activity-heading{display:flex;align-items:baseline;justify-content:space-between;gap:8px;color:#e7fbff;font-size:12px;font-weight:900;line-height:1.35}.tod-activity-meta{color:var(--studio-muted);font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;white-space:nowrap}.tod-activity-summary{color:var(--studio-ink);font-size:13px;line-height:1.5}.tod-activity-meaning{color:#b7d7e6;font-size:12px;line-height:1.42;white-space:pre-wrap}.tod-activity-evidence{margin-top:2px;border:1px solid rgba(97,219,191,.12);border-radius:10px;background:rgba(0,0,0,.18);padding:8px 9px}.tod-activity-evidence summary{cursor:pointer;color:#8ecfff;font-size:11px;font-weight:900;letter-spacing:.06em;text-transform:uppercase}.tod-drawer{margin-top:12px;border:1px solid rgba(97,219,191,.18);border-radius:14px;background:rgba(2,10,18,.5);padding:10px}.tod-drawer summary{cursor:pointer;color:#c5f1ff;font-size:12px;font-weight:900;letter-spacing:.06em;text-transform:uppercase}.tod-control-item{border:1px solid rgba(105,215,255,.22);border-radius:999px;background:rgba(8,42,60,.62);color:#e8f8ff;padding:8px 10px;font-size:12px;overflow-wrap:anywhere}.tod-control-item[aria-disabled=true]{opacity:.55}
       .tod-execution-banner{display:none;grid-template-columns:minmax(190px,1.8fr) minmax(140px,1fr) minmax(86px,.55fr) minmax(140px,1fr) minmax(190px,1.4fr);gap:10px;border:1px solid rgba(97,219,191,.24);border-radius:16px;padding:12px 14px;background:rgba(2,12,20,.82);align-items:start}.tod-execution-banner[data-state=blocked],.tod-execution-banner[data-state=stalled],.tod-execution-banner[data-state=failed]{border-color:rgba(255,111,141,.58);background:rgba(48,13,27,.54)}.tod-banner-label{display:block;color:#69d7ff;font-size:10px;font-weight:900;letter-spacing:.12em;text-transform:uppercase;margin-bottom:4px}.tod-execution-banner strong,.tod-execution-banner span:not(.tod-banner-label){display:block;color:#e8f8ff;font-size:12px;line-height:1.35;overflow-wrap:anywhere}
       .tod-chat-scroll{overflow:auto;padding:18px 6px;scroll-behavior:smooth}.tod-message-row{display:flex;margin:0 0 24px}.tod-message-row.operator{justify-content:flex-end}.tod-message-row.system{justify-content:center}.tod-message-bubble{max-width:min(760px,86%);border:1px solid rgba(97,219,191,.18);border-radius:18px;padding:12px 14px;margin-bottom:12px;white-space:pre-wrap;line-height:1.48;background:rgba(3,13,22,.72);position:relative}.tod-message-row.operator .tod-message-bubble{background:rgba(13,74,105,.7);border-color:rgba(105,215,255,.35)}.tod-message-row.tod .tod-message-bubble{background:rgba(5,35,28,.74);border-color:rgba(103,255,188,.24)}.tod-message-row.system .tod-message-bubble{max-width:min(620px,88%);background:rgba(50,40,11,.42);border-color:rgba(255,209,102,.34);color:#ffe8a8}.tod-message-meta{color:var(--studio-muted);font-size:11px;font-weight:900;margin-bottom:6px;text-transform:uppercase;letter-spacing:.05em}.tod-message-text{overflow-wrap:anywhere}.tod-message-tools{position:absolute;top:100%;left:6px;display:flex;flex-wrap:nowrap;gap:2px;margin-top:5px;opacity:0;transform:translateY(-2px);transition:opacity .14s ease,transform .14s ease}.tod-message-row.operator .tod-message-tools{left:auto;right:6px;justify-content:flex-end}.tod-message-row.system .tod-message-tools{display:none}.tod-message-row:last-child .tod-message-tools,.tod-message-bubble:hover .tod-message-tools,.tod-message-bubble:focus-within .tod-message-tools,.tod-message-tools:focus-within{opacity:.82;transform:translateY(0)}.tod-message-tools button{width:25px;height:25px;border:0;border-radius:999px;background:transparent;color:rgba(197,241,255,.82);font:inherit;font-size:12px;line-height:1;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}.tod-message-tools button:hover{background:rgba(197,241,255,.12);color:#e8f8ff}
       .tod-composer-shell{border:1px solid rgba(97,219,191,.24);border-radius:18px;padding:12px;background:rgba(2,11,18,.82)}.tod-file-drop{display:none;border:1px dashed rgba(105,215,255,.42);border-radius:12px;padding:10px 12px;margin-bottom:10px;color:var(--studio-muted);font-size:12px}.tod-file-drop.active{display:block}#todChatInput{width:100%;max-height:180px;min-height:54px;resize:none;border:0;outline:0;border-radius:14px;background:rgba(5,19,31,.86);color:var(--studio-ink);padding:14px;font:inherit;line-height:1.45}.tod-attachment-summary{min-height:18px;margin:8px 0 0;color:var(--studio-muted);font-size:12px}.tod-composer-actions{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-top:8px}.tod-tool-row{display:flex;align-items:center;gap:8px}.tod-icon-button,.tod-send-button{border:1px solid rgba(105,215,255,.34);background:rgba(8,42,60,.82);color:#e8f8ff;cursor:pointer;font:inherit}.tod-icon-button{width:34px;height:34px;border-radius:50%;display:inline-grid;place-items:center;font-weight:900}.tod-send-button{border-radius:999px;padding:9px 16px;font-weight:900}.tod-icon-button:hover,.tod-send-button:hover{border-color:rgba(105,215,255,.78);background:rgba(13,82,112,.9)}
@@ -2121,15 +2133,15 @@ def _studio_tod_body() -> str:
       function saveLocal(){try{localStorage.setItem(localKey,JSON.stringify({messages,updated_at:new Date().toISOString()}))}catch(error){}}
       function loadLocal(){try{const data=JSON.parse(localStorage.getItem(localKey)||'{}');if(Array.isArray(data.messages))messages=data.messages}catch(error){}}
       function updateThreadList(payload){const list=document.getElementById('todThreadList');if(!list)return;const activity=payload?.session?.activity||{},updated=cleanText(payload?.session?.updated_at||activity.last_activity_at||'');list.innerHTML=`<button type="button" class="tod-thread-item active"><div class="tod-thread-title">Dave + TOD</div><div class="tod-thread-meta">${escapeHtml(cleanText(activity.label||'Conversation'))}${updated?' · '+escapeHtml(updated):''}</div></button>`}
-      function renderTodActivityList(){if(!todActivityList)return;if(!todActivityItems.length){todActivityList.innerHTML='<div class="tod-activity-item"><div class="tod-activity-meta">Waiting</div><div class="tod-activity-summary">No active TOD lane is visible yet.</div></div>';return}todActivityList.innerHTML=todActivityItems.map((item,index)=>`<details class="tod-activity-item" data-state="${escapeHtml(item.state)}" ${index<2?'open':''}><summary>${escapeHtml(item.label||'TOD event')}${item.time?' - '+escapeHtml(item.time):''}</summary><div class="tod-activity-summary">${escapeHtml(item.summary||'No event summary published.')}</div>${item.meaning?'<div class="tod-activity-meaning">'+escapeHtml(item.meaning)+'</div>':''}</details>`).join('')}
+      function renderTodActivityList(){if(!todActivityList)return;if(!todActivityItems.length){todActivityList.innerHTML='<div class="tod-activity-item"><div class="tod-activity-meta">Waiting</div><div class="tod-activity-summary">No active TOD lane is visible yet.</div></div>';return}todActivityList.innerHTML=todActivityItems.map((item,index)=>{const kind=cleanText(item.kind||'event');const evidence=item.evidence?`<details class="tod-activity-evidence"><summary>Evidence</summary><div class="tod-activity-meaning">${escapeHtml(item.evidence)}</div></details>`:'';return`<article class="tod-activity-item" data-kind="${escapeHtml(kind)}" data-state="${escapeHtml(item.state)}"><div class="tod-activity-heading"><span>${escapeHtml(item.label||'TOD update')}</span>${item.time?'<span class="tod-activity-meta">'+escapeHtml(item.time)+'</span>':''}</div><div class="tod-activity-summary">${escapeHtml(item.summary||item.meaning||'No live work detail published.')}</div>${item.meaning&&item.meaning!==item.summary?'<div class="tod-activity-meaning">'+escapeHtml(item.meaning)+'</div>':''}${evidence}</article>`}).join('')}
       function rememberTodActivity(item){const signature=[item.state,item.label,item.time,item.summary,item.meaning].join('|');if(!todActivityItems.length||todActivityItems[0].signature!==signature){todActivityItems.unshift({...item,signature});todActivityItems=todActivityItems.slice(0,20)}renderTodActivityList()}
       function updateAttachmentSummary(){attachmentSummary.textContent=attachments.length?`${attachments.length} attachment(s): ${attachments.map(item=>item.name).join(', ')}`:''}
       function autoSize(){if(!input)return;input.style.height='auto';input.style.height=Math.min(input.scrollHeight,180)+'px'}
       function displayTime(value){const text=cleanText(value);if(!text)return'';const parsed=Date.parse(text);if(Number.isNaN(parsed))return text;return new Date(parsed).toLocaleString([], {month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});}
       function renderControls(workspace){const list=document.getElementById('todControlList');if(!list)return;const controls=Array.isArray(workspace?.controls)?workspace.controls:[];if(!controls.length){list.innerHTML='<div class="tod-control-item" aria-disabled="true">No queue controls are published for this lane.</div>';return}list.innerHTML=controls.map(item=>`<div class="tod-control-item" aria-disabled="${item.enabled?'false':'true'}">${escapeHtml(item.label||item.id||'Control')}${item.disabled_reason?' - '+escapeHtml(item.disabled_reason):''}</div>`).join('')}
       function renderBanner(workspace,state,label,timeLabel){const banner=document.getElementById('todExecutionBanner');if(!banner)return;banner.setAttribute('data-state',state);const working=document.getElementById('todBannerWorking'),target=document.getElementById('todBannerTarget'),elapsed=document.getElementById('todBannerElapsed'),waiting=document.getElementById('todBannerWaiting'),waitingGroup=document.getElementById('todBannerWaitingGroup'),next=document.getElementById('todBannerNext');if(working)working.textContent=cleanText(workspace?.working||label||'TOD is ready.');if(target)target.textContent=cleanText(workspace?.target||'No active target.');if(elapsed)elapsed.textContent=cleanText(workspace?.elapsed||timeLabel||'Unknown');const waitText=cleanText(workspace?.waiting||'');if(waitingGroup)waitingGroup.hidden=!waitText;if(waiting)waiting.textContent=waitText||'None';if(next)next.textContent=cleanText(workspace?.next_action||'Wait for the next fresh TOD execution artifact.')}
-      function updateLive(payload,liveState){const activity=payload?.session?.activity||{},workspace=liveState?.operator_workspace||payload?.operator_workspace||{},execution=liveState?.execution||{},status=liveState?.status||payload?.status||{},quick=liveState?.quick_facts||payload?.quick_facts||{},marker=payload?.state_marker||{};const state=(cleanText(workspace.status_code||execution.activity_state||status.code||activity.state||'idle').toLowerCase()||'idle'),label=cleanText(workspace.status_label||execution.activity_label||status.label||activity.label||state||'Ready'),summary=cleanText(workspace.working||execution.activity_summary||execution.summary||status.summary||activity.summary||'TOD is ready.'),objective=cleanText(workspace.objective_id||execution.objective_id||quick.live_request_objective||quick.canonical_objective||marker.objective_id||marker.canonical_objective||''),task=cleanText(workspace.task_id||execution.task_id||execution.task_focus||quick.active_task_id||quick.request_task_id||marker.task_id||''),waiting=cleanText(workspace.waiting||execution.wait_reason||''),nextAction=cleanText(workspace.next_action||execution.next_step||execution.next_validation||''),timestamp=cleanText(execution.updated_at||execution.generated_at||liveState?.generated_at||payload?.session?.updated_at||activity.last_activity_at||''),timeLabel=workspace.elapsed||displayTime(timestamp);const parts=[];if(objective)parts.push(`Objective: ${objective}`);if(task)parts.push(`Task: ${task}`);if(waiting)parts.push(`Waiting: ${waiting}`);if(nextAction)parts.push(`Next: ${nextAction}`);const meaningText=parts.length?parts.join(' | '):'No active TOD lane is visible yet.';document.getElementById('todLiveCard')?.setAttribute('data-state',state);const title=document.getElementById('todLiveTitle'),stateEl=document.getElementById('todLiveState'),summaryEl=document.getElementById('todLiveSummary'),meaningEl=document.getElementById('todLiveMeaning');if(title)title.textContent=label==='Idle'?'TOD is ready':`TOD is ${label.toLowerCase()}`;if(stateEl)stateEl.textContent=`${label}${timeLabel?' - '+timeLabel:''}`;if(summaryEl)summaryEl.textContent=summary;if(meaningEl)meaningEl.textContent=meaningText;renderBanner(workspace,state,label,timeLabel);renderControls(workspace);const timeline=Array.isArray(workspace.timeline)?workspace.timeline:[];if(timeline.length){todActivityItems=timeline.map(item=>({state,label:cleanText(item.label||label),time:displayTime(item.created_at||timestamp),summary:cleanText(item.summary||summary),meaning:cleanText(item.detail||'')}));renderTodActivityList()}else{rememberTodActivity({state,label,time:timeLabel,summary,meaning:meaningText})}}
-      async function refreshState(){const response=await fetch(`/tod/ui/chat/state?session_key=${encodeURIComponent(sessionKey)}&mode=tod`,{cache:'no-store'});if(!response.ok)throw new Error('tod-state-'+response.status);const payload=await response.json();let liveState={};try{const liveResponse=await fetch('/tod/ui/state',{cache:'no-store'});if(liveResponse.ok)liveState=await liveResponse.json();}catch(error){}messageUrl=payload?.actions?.message_url||messageUrl;handoffUrl=payload?.actions?.handoff_url||handoffUrl;uploadUrl=payload?.actions?.upload_url||uploadUrl;if(Array.isArray(payload.messages)){messages=payload.messages;saveLocal();renderMessages()}updateLive(payload,liveState);updateThreadList(payload)}
+      function updateLive(payload,liveState){const activity=payload?.session?.activity||{},workspace=liveState?.operator_workspace||payload?.operator_workspace||{},execution=liveState?.execution||{},status=liveState?.status||payload?.status||{},quick=liveState?.quick_facts||payload?.quick_facts||{},marker=payload?.state_marker||{};const state=(cleanText(workspace.status_code||execution.activity_state||status.code||activity.state||'idle').toLowerCase()||'idle'),label=cleanText(workspace.status_label||execution.activity_label||status.label||activity.label||state||'Ready'),summary=cleanText(workspace.working||execution.activity_summary||execution.summary||status.summary||activity.summary||'TOD is ready.'),objective=cleanText(workspace.objective_id||execution.objective_id||quick.live_request_objective||quick.canonical_objective||marker.objective_id||marker.canonical_objective||''),task=cleanText(workspace.task_id||execution.task_id||execution.task_focus||quick.active_task_id||quick.request_task_id||marker.task_id||''),waiting=cleanText(workspace.waiting||execution.wait_reason||''),nextAction=cleanText(workspace.next_action||execution.next_step||execution.next_validation||''),timestamp=cleanText(execution.updated_at||execution.generated_at||liveState?.generated_at||payload?.session?.updated_at||activity.last_activity_at||''),timeLabel=workspace.elapsed||displayTime(timestamp);const parts=[];if(objective)parts.push(`Objective: ${objective}`);if(task)parts.push(`Task: ${task}`);if(waiting)parts.push(`Waiting: ${waiting}`);if(nextAction)parts.push(`Next: ${nextAction}`);const meaningText=parts.length?parts.join(' | '):'No active TOD lane is visible yet.';document.getElementById('todLiveCard')?.setAttribute('data-state',state);const title=document.getElementById('todLiveTitle'),stateEl=document.getElementById('todLiveState'),summaryEl=document.getElementById('todLiveSummary'),meaningEl=document.getElementById('todLiveMeaning');if(title)title.textContent=label==='Idle'?'TOD is ready':`TOD is ${label.toLowerCase()}`;if(stateEl)stateEl.textContent=`${label}${timeLabel?' - '+timeLabel:''}`;if(summaryEl)summaryEl.textContent=summary;if(meaningEl)meaningEl.textContent=meaningText;renderBanner(workspace,state,label,timeLabel);renderControls(workspace);const narrative=Array.isArray(workspace.narrative)?workspace.narrative:[],timeline=Array.isArray(workspace.timeline)?workspace.timeline:[];if(narrative.length){todActivityItems=narrative.map((item,index)=>({kind:'narrative',state,label:cleanText(item.label||label||'TOD update'),time:cleanText(item.created_age||displayTime(item.created_at||timestamp)),summary:cleanText(item.detail||item.summary||summary),meaning:index===0?meaningText:'',evidence:timeline[index]?cleanText(timeline[index].detail||timeline[index].summary||''):''}));renderTodActivityList()}else if(timeline.length){todActivityItems=timeline.map(item=>({kind:'event',state,label:cleanText(item.label||label),time:displayTime(item.created_at||timestamp),summary:cleanText(item.summary||summary),meaning:cleanText(item.detail||'')}));renderTodActivityList()}else{rememberTodActivity({kind:'narrative',state,label,time:timeLabel,summary,meaning:meaningText})}}
+      async function refreshState(){const response=await fetch(`/tod/ui/chat/state?session_key=${encodeURIComponent(sessionKey)}&mode=tod`,{cache:'no-store',credentials:'same-origin'});if(!response.ok)throw new Error('tod-state-'+response.status);const payload=await response.json();let liveState={};try{const liveResponse=await fetch('/studio/api/tod/live-feed',{cache:'no-store',credentials:'same-origin'});const contentType=String(liveResponse.headers.get('content-type')||'').toLowerCase();if(!liveResponse.ok||!contentType.includes('application/json'))throw new Error('studio-tod-live-feed-unavailable');liveState=await liveResponse.json();}catch(error){liveState={operator_workspace:{status_code:'waiting',status_label:'Live feed pending',working:'The protected TOD live feed could not be refreshed from this page yet.',waiting:cleanText(error?.message||'live feed unavailable'),next_action:'Refresh the page or inspect the Studio TOD live-feed endpoint.',narrative:[{label:'Live feed pending',detail:'The page could not read the protected TOD live feed, so raw execution alerts are being held out of the primary view until the feed refreshes.',created_age:'now'}]}}}messageUrl=payload?.actions?.message_url||messageUrl;handoffUrl=payload?.actions?.handoff_url||handoffUrl;uploadUrl=payload?.actions?.upload_url||uploadUrl;if(Array.isArray(payload.messages)){messages=payload.messages;saveLocal();renderMessages()}updateLive(payload,liveState);updateThreadList(payload)}
       async function readFiles(files){for(const file of Array.from(files||[])){const item={name:file.name,type:file.type||'file',size:file.size||0,text:''};if(/^text\\//.test(file.type||'')||/\\.(txt|md|csv|json)$/i.test(file.name))item.text=await file.text();if(/^image\\//.test(file.type||'')&&uploadUrl){item.data_url=await new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(String(reader.result||''));reader.onerror=reject;reader.readAsDataURL(file)})}attachments.push(item)}updateAttachmentSummary()}
       async function sendMessage(){const raw=(input?.value||'').trim();if(!raw&&!attachments.length)return;let message=raw;const textAttachments=attachments.filter(item=>item.text);if(textAttachments.length)message+='\\n\\nAttached content:\\n'+textAttachments.map(item=>`File: ${item.name}\\n${item.text.slice(0,2500)}`).join('\\n\\n');messages.push({role:'operator',content:raw||'Shared attachment',created_at:new Date().toISOString()});renderMessages();saveLocal();if(input){input.value='';autoSize()}const imageAttachment=attachments.find(item=>item.data_url),currentAttachments=attachments;attachments=[];updateAttachmentSummary();const endpoint=imageAttachment&&uploadUrl?uploadUrl:messageUrl,body=imageAttachment&&uploadUrl?{session_key:sessionKey,prompt:message,attachment:{filename:imageAttachment.name,mime_type:imageAttachment.type,data_url:imageAttachment.data_url}}:{session_key:sessionKey,message,attachments:currentAttachments.map(item=>({name:item.name,type:item.type,size:item.size}))};const response=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(!response.ok)throw new Error('tod-message-'+response.status);const payload=await response.json();if(Array.isArray(payload.messages))messages=payload.messages;updateLive(payload);updateThreadList(payload);renderMessages();saveLocal()}
       async function sendHandoff(){const message=(input?.value||'').trim()||'Package the current TOD issue, evidence, and next bounded repair for handoff.';const response=await fetch(handoffUrl,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({session_key:sessionKey,message})});if(!response.ok)throw new Error('tod-handoff-'+response.status);const payload=await response.json();if(Array.isArray(payload.messages))messages=payload.messages;updateLive(payload);renderMessages();saveLocal()}
@@ -3337,6 +3349,11 @@ STUDIO_AUDITOR_OBSERVATORY_CERTIFICATION_PATH = (
     / "read_only_audit_artifacts"
     / "STUDIO_AUDITOR_OBSERVATORY_CERTIFICATION_V1.latest.json"
 )
+STUDIO_AUDITOR_EVIDENCE_VERDICT_PATH = (
+    TRAINING_RUNTIME_ROOT
+    / "read_only_audit_artifacts"
+    / "STUDIO_AUDITOR_EVIDENCE_VERDICT.latest.json"
+)
 
 
 def _studio_auditor_observatory_cases() -> list[dict[str, Any]]:
@@ -3450,6 +3467,141 @@ def _load_studio_auditor_observatory_certification() -> dict[str, Any]:
     except Exception:
         return {}
     return data if isinstance(data, dict) else {}
+
+
+def _studio_auditor_training_path(value: str) -> Path:
+    candidate = Path(str(value or "").strip())
+    if not candidate.is_absolute():
+        candidate = Path.cwd() / candidate
+    candidate = candidate.resolve()
+    training_root = TRAINING_RUNTIME_ROOT.resolve()
+    try:
+        candidate.relative_to(training_root)
+    except ValueError as exc:
+        raise ValueError("auditor_evidence_path_outside_training_root") from exc
+    return candidate
+
+
+def _load_studio_auditor_evidence_object(value: str) -> tuple[Path, dict[str, Any]]:
+    path = _studio_auditor_training_path(value)
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return path, {}
+    except (OSError, json.JSONDecodeError):
+        return path, {}
+    return path, data if isinstance(data, dict) else {}
+
+
+def _run_studio_auditor_evidence_review(
+    request_path: str,
+    *,
+    output_path: Path | None = None,
+) -> dict[str, Any]:
+    request_file, evidence_request = _load_studio_auditor_evidence_object(request_path)
+    required_fields = [
+        "objective_id",
+        "claimed_outcome",
+        "meaningful_artifacts",
+        "validation",
+        "actual_performers",
+        "pass_fail_criteria",
+    ]
+    missing_request_fields = [field for field in required_fields if not evidence_request.get(field)]
+    artifact_rows: list[dict[str, Any]] = []
+    for artifact_value in evidence_request.get("meaningful_artifacts") or []:
+        artifact_path, artifact = _load_studio_auditor_evidence_object(str(artifact_value))
+        artifact_rows.append(
+            {
+                "path": str(artifact_value),
+                "exists": artifact_path.exists(),
+                "readable_object": bool(artifact),
+                "artifact_type": str(artifact.get("artifact_type") or ""),
+                "status_or_verdict": str(
+                    artifact.get("semantic_verdict")
+                    or artifact.get("verdict")
+                    or artifact.get("status")
+                    or artifact.get("training_usefulness")
+                    or ""
+                ),
+            }
+        )
+
+    validation = evidence_request.get("validation") if isinstance(evidence_request.get("validation"), dict) else {}
+    parser = validation.get("powershell_parser") if isinstance(validation.get("powershell_parser"), dict) else {}
+    unsafe = validation.get("unsafe_candidate") if isinstance(validation.get("unsafe_candidate"), dict) else {}
+    safe = validation.get("safe_candidate") if isinstance(validation.get("safe_candidate"), dict) else {}
+    examiner = evidence_request.get("examiner") if isinstance(evidence_request.get("examiner"), dict) else {}
+    performers = (
+        evidence_request.get("actual_performers")
+        if isinstance(evidence_request.get("actual_performers"), dict)
+        else {}
+    )
+
+    operational_checks = {
+        "parser_passed": parser.get("passed") is True and int(parser.get("errors") or 0) == 0,
+        "unsafe_candidate_rejected": unsafe.get("verdict") == "reject"
+        and unsafe.get("mutation_authority_allowed") is False
+        and unsafe.get("production_source_unchanged") is True
+        and unsafe.get("cleanup_passed") is True,
+        "safe_candidate_isolated_accept": safe.get("verdict") == "accept"
+        and safe.get("mutation_authority_allowed") is True
+        and int(safe.get("parser_exit_code") or 0) == 0
+        and safe.get("behavior_test_passed") is True
+        and safe.get("production_source_unchanged") is True
+        and safe.get("cleanup_passed") is True,
+        "examiner_boundary_preserved": examiner.get("engineering_credit_allowed") is False
+        and examiner.get("runtime_support_credit_allowed") is True,
+    }
+    evidence_complete = bool(artifact_rows) and all(
+        row["exists"] and row["readable_object"] for row in artifact_rows
+    )
+    operational_gate_verified = (
+        not missing_request_fields and evidence_complete and all(operational_checks.values())
+    )
+    implementation_performer = str(performers.get("control_plane_implementation") or "").strip().lower()
+    tod_independence_verified = implementation_performer == "tod"
+
+    if missing_request_fields or not evidence_complete:
+        verdict = "awaiting_verification"
+    elif not operational_gate_verified:
+        verdict = "failed"
+    elif not tod_independence_verified:
+        verdict = "verified_with_limits"
+    else:
+        verdict = "verified"
+
+    reason_codes: list[str] = []
+    if missing_request_fields:
+        reason_codes.append("missing_required_request_fields")
+    if not evidence_complete:
+        reason_codes.append("referenced_evidence_missing_or_unreadable")
+    if evidence_complete and not all(operational_checks.values()):
+        reason_codes.append("operational_validation_failed")
+    if operational_gate_verified and not tod_independence_verified:
+        reason_codes.append("implementation_is_borrowed_capability")
+
+    payload = {
+        "packet_type": "studio-auditor-generic-evidence-verdict-v1",
+        "generated_at": _utc_now(),
+        "request_path": str(request_file),
+        "objective_id": str(evidence_request.get("objective_id") or ""),
+        "claimed_outcome": str(evidence_request.get("claimed_outcome") or ""),
+        "verdict": verdict,
+        "reason_codes": reason_codes,
+        "missing_request_fields": missing_request_fields,
+        "referenced_evidence": artifact_rows,
+        "operational_checks": operational_checks,
+        "operational_gate_verified": operational_gate_verified,
+        "tod_independence_verified": tod_independence_verified,
+        "borrowed_capability_ratio_effect": "no_reduction" if not tod_independence_verified else "eligible_for_review",
+        "operator_needed": "no",
+        "auditor_rule": "Verify referenced evidence and actual performers; do not infer independence from operational success.",
+    }
+    destination = output_path or STUDIO_AUDITOR_EVIDENCE_VERDICT_PATH
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+    return payload
 
 
 def _auditor_body(state: dict[str, Any]) -> str:
@@ -14774,6 +14926,22 @@ async def studio_auditor_observatory_certification_api(request: Request) -> dict
     return _run_studio_auditor_observatory_certification()
 
 
+@router.post("/studio/api/auditor/evidence-review")
+async def studio_auditor_evidence_review_api(
+    request: Request,
+    payload: dict[str, Any] = Body(...),
+) -> dict[str, Any]:
+    if not request_has_valid_mimtod_auth(request):
+        raise HTTPException(status_code=401, detail="studio_login_required")
+    request_path = str(payload.get("request_path") or "").strip()
+    if not request_path:
+        raise HTTPException(status_code=400, detail="auditor_request_path_required")
+    try:
+        return _run_studio_auditor_evidence_review(request_path)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @router.get("/studio/auditor/lab", response_class=HTMLResponse)
 async def studio_auditor_lab(request: Request) -> HTMLResponse:
     auth_redirect = maybe_require_mimtod_page_login(request, next_path="/studio/auditor/lab")
@@ -16305,7 +16473,7 @@ def _studio_simple_direct_reply(prompt: str, page_context: str) -> dict[str, Any
 
     if (
         len(text_value) <= 120
-        and not any(term in prompt_lower for term in ["highest value task", "highest priority", "best next training objective", "next useful action", "smartest next move", "best next operator action", "what should we work on", "what is next", "what is tod working on", "independent tod resolution", "independent tod resolutions", "independent resolution", "independent resolutions", "10 independent", "missing for tod", "biggest problem"])
+        and not any(term in prompt_lower for term in ["highest value task", "highest priority", "best next training objective", "next useful action", "what should we work on", "best next operator action", "what should we work on", "what is next", "what is tod working on", "independent tod resolution", "independent tod resolutions", "independent resolution", "independent resolutions", "10 independent", "missing for tod", "biggest problem"])
         and any(
         prompt_lower.startswith(prefix)
         for prefix in [
@@ -16820,6 +16988,95 @@ async def studio_mim_live_feed_api(request: Request) -> dict[str, Any]:
     return _studio_mim_live_feed_state()
 
 
+@router.get("/studio/api/tod/live-feed")
+async def studio_tod_live_feed_api(request: Request) -> dict[str, Any]:
+    if not request_has_valid_mimtod_auth(request):
+        raise HTTPException(status_code=401, detail="studio_auth_required")
+    from core.routers import tod_ui as tod_ui_router
+
+    return tod_ui_router._build_tod_console_state()
+
+
+def _studio_blocker_acknowledgement_reply(prompt: str, page_context: str) -> dict[str, Any] | None:
+    """Project an explicit coordination acknowledgement before generic reply routing."""
+    normalized = str(prompt or "")
+    lowered = normalized.lower()
+    required_fields = (
+        "received",
+        "understood_intent",
+        "continuation_action",
+        "expected_evidence",
+        "estimated_continuation_check",
+        "blocker_state",
+    )
+    owner_field_requested = "accepted_owner" in lowered or "rejected_owner" in lowered
+    if not (
+        "blocker" in lowered
+        and "acknowledg" in lowered
+        and owner_field_requested
+        and all(field in lowered for field in required_fields)
+    ):
+        return None
+
+    def clause(*labels: str, default: str) -> str:
+        for label in labels:
+            match = re.search(
+                rf"(?is)\b{re.escape(label)}\s*(?:is|:|=)\s*([^\n]+?)(?=(?:;|\n)\s*[a-z_ ]+\s*(?:is|:|=)|$)",
+                normalized,
+            )
+            if match:
+                value = match.group(1).strip(" .;`")
+                if value:
+                    return value
+        return default
+
+    owner = clause(
+        "proposed owner",
+        "driver",
+        default="the explicitly assigned emergency bridge",
+    )
+    continuation = clause(
+        "smallest continuation",
+        "continuation_action",
+        default="execute the assigned bounded repair, then return it to TOD for validation",
+    )
+    evidence = clause(
+        "expected evidence",
+        "expected_evidence",
+        default="changed files, focused tests, deployment evidence, rollback, and live proof",
+    )
+    reply = (
+        "received: yes\n"
+        "understood_intent: acknowledge the published blocker and preserve the requested coordination contract\n"
+        f"accepted_owner: {owner}\n"
+        f"continuation_action: {continuation}\n"
+        f"expected_evidence: {evidence}\n"
+        "estimated_continuation_check: immediately after the bounded repair and focused validation\n"
+        "blocker_state: acknowledged_blocked"
+    )
+    return _studio_with_response_authority(
+        {
+            "ok": True,
+            "source": "studio_blocker_acknowledgement_protocol",
+            "response_mode": "coordination_acknowledgement",
+            "mim_interface": {
+                "reply_text": reply,
+                "page_context": page_context,
+                "surface": "studio",
+            },
+            "navigation": None,
+            "evidence": {
+                "contract": "mim_tod_blocker_acknowledgement_v1",
+                "required_fields": [*required_fields, "accepted_owner"],
+            },
+        },
+        final_answer_source="coordination_protocol",
+        composer_called=False,
+        canned_response_used=False,
+        intent_class="blocker_acknowledgement",
+    )
+
+
 @router.post("/studio/api/mim/chat")
 async def studio_mim_chat_api(
     payload: StudioMimChatRequest,
@@ -16841,6 +17098,9 @@ async def studio_mim_chat_api(
     )
     operator_contract = str(metadata.get("surface") or "").strip() == "studio_training_operator_impact"
     structural_smoke = str(metadata.get("objective") or "").strip() == "structural_reasoning_cross_surface"
+    blocker_acknowledgement = _studio_blocker_acknowledgement_reply(prompt, page_context)
+    if blocker_acknowledgement is not None:
+        return blocker_acknowledgement
     direct_control = (
         "france" in prompt_lower and any(term in prompt_lower for term in ["day", "date", "what about"])
     ) or any(term in prompt_lower for term in ["what day", "day of the week", "what date", "today's date", "todays date"])

@@ -29,7 +29,7 @@ FAMILIES: list[dict[str, Any]] = [
     {
         "priority": 1,
         "family": "Read-Only Assessment And Authority Classification",
-        "entry_ids": ["APP-TOD-034", "APP-TOD-033", "APP-TOD-032", "APP-TOD-012"],
+        "entry_ids": ["APP-TOD-034", "APP-TOD-033", "APP-TOD-032", "APP-TOD-036"],
         "why_now": "APP-TOD-034 already has an independent demo, so adjacent read-only/authority debt is the fastest responsible reduction target.",
         "proof_artifact": "runtime_remote_training/read_only_audit_artifacts/TOD_READ_ONLY_AUTHORITY_CLASSIFICATION_RETIREMENT_PROOF.latest.json",
     },
@@ -64,7 +64,7 @@ FAMILIES: list[dict[str, Any]] = [
     {
         "priority": 6,
         "family": "MIM/TOD Coordination Contract And Status Truth",
-        "entry_ids": ["APP-TOD-005", "APP-TOD-014", "APP-TOD-017", "APP-TOD-020", "APP-TOD-011"],
+        "entry_ids": ["APP-TOD-005", "APP-TOD-014", "APP-TOD-017", "APP-TOD-020", "APP-TOD-035"],
         "why_now": "Coordination truth affects every operator-facing page and every blocker loop.",
         "proof_artifact": "runtime_remote_training/tod_result_artifacts/TOD_COORDINATION_STATUS_TRUTH_RETIREMENT_PROOF.latest.json",
     },

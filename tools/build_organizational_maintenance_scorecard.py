@@ -56,6 +56,7 @@ def parse_apprenticeship_registry(text: str) -> list[dict[str, Any]]:
         progress = _first_backtick_field(body, "Progress") or "unknown"
         proficiency = _first_backtick_field(body, "Proficiency") or "unknown"
         retirement_line = _first_plain_field(body, "Retirement") or "unknown"
+        category, category_reason = categorize_registry_entry(match.group(2).strip(), body)
         entries.append(
             {
                 "id": match.group(1),
@@ -63,6 +64,8 @@ def parse_apprenticeship_registry(text: str) -> list[dict[str, Any]]:
                 "progress": progress,
                 "proficiency": proficiency,
                 "retirement": retirement_line,
+                "category": category,
+                "category_reason": category_reason,
             }
         )
     return entries
@@ -129,6 +132,132 @@ def borrowed_capability_ratio(entries: list[dict[str, Any]], previous: dict[str,
     return {"current": current, "previous": previous_current, "trend": trend}
 
 
+def categorize_registry_entry(name: str, body: str) -> tuple[str, str]:
+    text = f"{name}\n{body}".lower()
+    category_rules = [
+        (
+            "model_utilization",
+            [
+                "model utilization",
+                "provider",
+                "local engineering model",
+                "qwen",
+                "tod-local-chat",
+                "engineering provider",
+                "prompt improvement",
+            ],
+        ),
+        (
+            "engineering",
+            [
+                "bounded edit",
+                "current-code",
+                "current code",
+                "unique-anchor",
+                "patch",
+                "implementation",
+                "source anchor",
+                "new_text",
+                "old_text",
+                "agentmim production repair",
+                "enterprise foundation minimal remote deployment",
+            ],
+        ),
+        (
+            "runtime",
+            [
+                "executor",
+                "selector",
+                "packet listener",
+                "localexecutionengine",
+                "codexexecutionengine",
+                "bridge",
+                "artifact lane",
+                "lineage",
+                "terminal lane",
+                "prompt packaging",
+                "binding",
+                "dispatch",
+                "routing",
+            ],
+        ),
+        (
+            "evidence",
+            [
+                "read-only audit",
+                "evidence ingestion",
+                "artifact extraction",
+                "scorecard",
+                "report",
+                "validation artifact",
+            ],
+        ),
+        (
+            "governance",
+            [
+                "authority",
+                "blocker policy",
+                "response contract",
+                "escalation",
+                "false completion",
+                "no wrapper-only",
+                "constitution",
+            ],
+        ),
+        (
+            "coordination",
+            [
+                "mim dialog",
+                "ack",
+                "handoff",
+                "coordination",
+                "conversation",
+                "operator chat",
+            ],
+        ),
+    ]
+    for category, needles in category_rules:
+        for needle in needles:
+            if needle in text:
+                return category, f"matched `{needle}`"
+    return "unclassified", "no category keyword matched"
+
+
+def borrowed_capability_ratio_by_category(
+    entries: list[dict[str, Any]], previous: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    categories = sorted({str(entry.get("category") or "unclassified") for entry in entries})
+    current: dict[str, Any] = {}
+    previous_current = previous.get("current") if isinstance(previous, dict) else {}
+    for category in categories:
+        category_entries = [entry for entry in entries if str(entry.get("category") or "unclassified") == category]
+        category_previous = None
+        if isinstance(previous_current, dict):
+            prior_value = previous_current.get(category)
+            if isinstance(prior_value, dict):
+                category_previous = {"current": prior_value}
+        current[category] = borrowed_capability_ratio(category_entries, category_previous)["current"]
+
+    trend: dict[str, str] = {}
+    if isinstance(previous_current, dict):
+        for category, category_current in current.items():
+            prior_category = previous_current.get(category)
+            prior_borrowed = prior_category.get("borrowed_percent") if isinstance(prior_category, dict) else None
+            if isinstance(prior_borrowed, (int, float)):
+                now = float(category_current.get("borrowed_percent", 0.0))
+                if now < float(prior_borrowed):
+                    trend[category] = "improving"
+                elif now > float(prior_borrowed):
+                    trend[category] = "regressing"
+                else:
+                    trend[category] = "flat"
+            else:
+                trend[category] = "baseline"
+    else:
+        trend = {category: "baseline" for category in current}
+    return {"current": current, "previous": previous_current or None, "trend": trend}
+
+
 def metric(name: str, status: str, current: str, target: str, source: str, next_action: str) -> dict[str, str]:
     return {
         "metric": name,
@@ -150,6 +279,10 @@ def build_scorecard() -> dict[str, Any]:
     registry_text = REGISTRY_PATH.read_text(encoding="utf-8") if REGISTRY_PATH.exists() else ""
     registry_entries = parse_apprenticeship_registry(registry_text)
     borrowed_ratio = borrowed_capability_ratio(registry_entries, prior.get("borrowed_capability_ratio") if prior else None)
+    borrowed_ratio_by_category = borrowed_capability_ratio_by_category(
+        registry_entries,
+        prior.get("borrowed_capability_ratio_by_category") if prior else None,
+    )
 
     operator_score = operator.get("operator_impact_score")
     context_rate = context.get("weighted_pass_rate")
@@ -319,6 +452,14 @@ def build_scorecard() -> dict[str, Any]:
             "new metric contract",
             "Track blocker -> TOD diagnosis -> TOD repair -> validation -> resumed objective without Codex patching.",
         ),
+        metric(
+            "Model Utilization",
+            "needs_repair",
+            "APP-TOD-037 guided; provider reachable, R47 source-anchor proof passed, R48/R49 prove blank candidate failure, R25 proves non-empty candidate text can still fail semantic preservation, semantic-preservation R1 proves requested artifact/input can be lost to the wrong evidence lane, preservation R1 proves the task-specific artifact contract lane is missing, lane-definition R1 proves new custom artifact types are not executable yet, generic-summary R1 proves generic read-only audit drops contract-specific fields, field-preservation R1/R2 proves source-anchor observation tasks can still be misrouted into generic target inference, lane-selection R1 proves prose task-category instructions do not override structured task_category, structured-category R1 proves rendered package correctness still does not guarantee read-only output artifact eligibility, read-only output eligibility R1 proves the supported inspection_only context lane can create a new output artifact, source-anchor category retry R1 proves source_anchor_observation requires a real source-file/anchor contract, source-anchor contract R2 proves that full contract can execute through Invoke-LocalExecutionSourceAnchorObservation, field-preservation retry R1 captures the generic read-only audit evidence-field producer block, field-preservation delta R1 proves TOD can publish a delta-proposal blocker but not yet populate source-anchor purpose/delta fields, a Codex provider probe proves local tod-local-chat can extract purpose/delta from clean bounded context, model-utilization supervision R1 proves TOD still lacks an executable local provider-judgment lane, local-lane materialization R1-R3 prove the provider script exists while admission and artifact-type support are missing, and provider/admission packet R1 attempts prove source-anchor repair packets still fail at packet formation/materialization",
+            "TOD builds context, judges model output, rejects weak help, improves prompts, and records engineering episodes without treating model text as implementation credit",
+            "TOD_APPRENTICESHIP_REGISTRY.md; TOD_ENGINEERING_CORPUS_PRIMARY_PRODUCT_REALIGNMENT_V1.latest.json",
+            "Run TOD-MODEL-UTILIZATION-EXECUTION-LANE-SUPPORT-SOURCE-ANCHOR-V1 so TOD inspects the current execution-lane decision points before any provider-judgment repair is attempted.",
+        ),
     ]
 
     return {
@@ -328,6 +469,13 @@ def build_scorecard() -> dict[str, Any]:
         "status": "active_measurement_contract_established",
         "codex_role": "advisory_and_validation_only",
         "borrowed_capability_ratio": borrowed_ratio,
+        "borrowed_capability_ratio_by_category": borrowed_ratio_by_category,
+        "tod_training_emphasis": {
+            "primary_track": "engineering",
+            "supporting_tracks": ["model_utilization", "evidence", "validation"],
+            "secondary_tracks": ["runtime", "governance", "coordination"],
+            "policy": "Runtime plumbing is repaired only far enough to unblock engineering demonstrations. The Engineering Corpus is the primary product for TOD learning, and local model use should generate supervised engineering episodes rather than replace TOD ownership.",
+        },
         "mim_scorecard": {
             "status": _section_status(mim_metrics),
             "metrics": mim_metrics,
@@ -358,7 +506,7 @@ def build_scorecard() -> dict[str, Any]:
             "status": "drafted",
             "path": "docs/training/MIM_TOD_ORGANIZATIONAL_CONSTITUTION_V1.md",
         },
-        "next_action": "TOD should execute the first measured maintenance slice: add instrumentation for Conversation Act Recognition without adding hardcoded response routes.",
+        "next_action": "Keep the next TOD cycle on Engineering plus Model Utilization: inspect the model-utilization execution lane, name the smallest provider-judgment support change, then return to source-anchor semantic delta preservation.",
     }
 
 
@@ -410,9 +558,24 @@ def write_outputs(scorecard: dict[str, Any]) -> None:
         f"- Independent: {scorecard['borrowed_capability_ratio']['current']['independent_percent']}%",
         f"- Trend: {scorecard['borrowed_capability_ratio']['trend']}",
         "",
-        "## MIM Metrics",
+        "## Borrowed Capability Ratio By Category",
         "",
     ]
+    lines.extend(_category_ratio_table(scorecard["borrowed_capability_ratio_by_category"]["current"]))
+    lines.extend(
+        [
+            "",
+            "## TOD Training Emphasis",
+            "",
+            f"- Primary track: {scorecard['tod_training_emphasis']['primary_track']}",
+            f"- Supporting tracks: {', '.join(scorecard['tod_training_emphasis']['supporting_tracks'])}",
+            f"- Secondary tracks: {', '.join(scorecard['tod_training_emphasis']['secondary_tracks'])}",
+            f"- Policy: {scorecard['tod_training_emphasis']['policy']}",
+            "",
+        "## MIM Metrics",
+        "",
+        ]
+    )
     lines.extend(_metric_table(scorecard["mim_scorecard"]["metrics"]))
     lines.extend(["", "## TOD Metrics", ""])
     lines.extend(_metric_table(scorecard["tod_scorecard"]["metrics"]))
@@ -437,6 +600,25 @@ def _metric_table(metrics: list[dict[str, str]]) -> list[str]:
                 status=_escape_md(item["status"]),
                 current=_escape_md(item["current"]),
                 target=_escape_md(item["target"]),
+            )
+        )
+    return lines
+
+
+def _category_ratio_table(categories: dict[str, Any]) -> list[str]:
+    lines = [
+        "| Category | Borrowed | Independent | Retired | Total |",
+        "| --- | ---: | ---: | ---: | ---: |",
+    ]
+    for category in sorted(categories):
+        item = categories[category]
+        lines.append(
+            "| {category} | {borrowed}% | {independent}% | {retired} | {total} |".format(
+                category=_escape_md(category),
+                borrowed=item.get("borrowed_percent", 0.0),
+                independent=item.get("independent_percent", 0.0),
+                retired=item.get("retired_count", 0),
+                total=item.get("total_entries", 0),
             )
         )
     return lines

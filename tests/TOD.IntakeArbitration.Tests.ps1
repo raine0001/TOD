@@ -278,7 +278,7 @@ Describe 'TOD intake queue arbitration' {
         try {
             Set-ActiveIntakeLane -Fixture $fixture -TaskId 'TSK-MIM-ACTIVE' -ObjectiveId 'objective-mim-active' -Source 'mim_request' -Priority 'mim_request'
 
-            $result = (& $todScript -Action execute-chat-task -ConfigPath $fixture.ConfigPath -StatePath $fixture.StatePath -ObjectiveId 'objective-admin-repair' -TaskId 'TSKCHAT-ADMIN-REPAIR' -RequestId 'REQ-ADMIN-REPAIR' -CorrelationId 'CORR-ADMIN-REPAIR' -Title 'ADMIN ACTION: repair active lane' -Description 'ADMIN ACTION: repair active lane' -Scope 'ADMIN ACTION: repair active lane' -AcceptanceCriteria 'Admin repair may supersede MIM.' -SuccessCriteria 'Admin repair may supersede MIM.' -AssignedExecutor local -TaskCategory diagnostic_implementation_repair -TargetFile 'scripts/TOD.ps1' -ExecutionMode async | Out-String | ConvertFrom-Json)
+            $result = (& $todScript -Action execute-chat-task -ConfigPath $fixture.ConfigPath -StatePath $fixture.StatePath -ObjectiveId 'objective-admin-repair' -TaskId 'TSKCHAT-ADMIN-REPAIR' -RequestId 'REQ-ADMIN-REPAIR' -CorrelationId 'CORR-ADMIN-REPAIR' -Title 'ADMIN ACTION: repair active lane' -Description 'ADMIN ACTION: repair active lane' -Scope 'ADMIN ACTION: repair active lane' -AcceptanceCriteria 'Admin repair may supersede MIM.' -SuccessCriteria 'Admin repair may supersede MIM.' -AssignedExecutor local -TaskCategory diagnostic_implementation_repair -TargetFile 'scripts/TOD.ps1' -EditMode validation_only -ValidationCommand "'admin_repair_probe=ok'" -ExecutionMode async | Out-String | ConvertFrom-Json)
 
             [string]$result.intake_arbitration.decision | Should Be 'supersede_active'
             [string]$result.intake_arbitration.active_lane.task_id | Should Be 'TSKCHAT-ADMIN-REPAIR'
@@ -484,6 +484,41 @@ No source code modifications in this rung.
             [bool]$targetSelection.intake_arbitration.pre_active_lane_gate.canonical_contract.source_code_modification_allowed | Should Be $false
             [string]$targetSelection.intake_arbitration.pre_active_lane_gate.canonical_contract.task_mode | Should Be 'target_selection'
             @($targetSelection.intake_arbitration.pre_active_lane_gate.canonical_contract.expected_evidence) -contains 'target_selection_artifact' | Should Be $true
+            $promptPath = Join-Path $repoRoot 'tod/out/prompts/TSK-TARGET-SELECTION-MODE-RUNG-V1.md'
+            $promptText = Get-Content -Path $promptPath -Raw
+            [string]$promptText | Should Match 'Task Description: TOD selects the target before bounded edit packet materialization\.'
+            [string]$promptText | Should Match '(?m)^- Task Category:\s*training\s*$'
+        }
+        finally {
+            if ($fixture -and (Test-Path -Path $fixture.Root)) {
+                Remove-Item -Path $fixture.Root -Recurse -Force
+            }
+        }
+    }
+
+    It 'preserves explicit anchor_selection category from direct chat into the generated task package' {
+        $fixture = New-IntakeStateFixture
+        try {
+            foreach ($relativePath in @($intakeArtifactRelativePaths)) {
+                $pathValue = Join-Path $repoRoot $relativePath
+                if (Test-Path -Path $pathValue -PathType Leaf) {
+                    Remove-Item -Path $pathValue -Force
+                }
+            }
+
+            $anchorScope = @"
+Source File: tmp_remote_mim/core/routers/tod_ui.py
+Output: runtime_remote_training/read_only_audit_artifacts/TOD_SOURCE_ANCHOR_DISAMBIGUATION_ANCHOR_TEST.latest.json
+Mission: Read the blocker evidence, inspect the source file it names, and publish a unique current-code source anchor as evidence. Do not modify source code.
+"@
+            $anchorSelection = (& $todScript -Action execute-chat-task -ConfigPath $fixture.ConfigPath -StatePath $fixture.StatePath -ObjectiveId 'TOD-SOURCE-ANCHOR-PACKET-TARGET-DISAMBIGUATION-V1' -TaskId 'TSK-ANCHOR-SELECTION-CATEGORY-PRESERVED' -RequestId 'REQ-ANCHOR-SELECTION-CATEGORY-PRESERVED' -CorrelationId 'CORR-ANCHOR-SELECTION-CATEGORY-PRESERVED' -Title 'Anchor selection category preservation' -Description 'TOD must keep source-anchor inspection category distinct from generic read-only assessment.' -Scope $anchorScope -AcceptanceCriteria 'Task category remains anchor_selection through package creation.' -SuccessCriteria 'Generated package includes anchor_selection.' -AssignedExecutor local -TaskCategory anchor_selection -Type read_only_assessment -ExecutionMode async | Out-String | ConvertFrom-Json)
+
+            [string]$anchorSelection.intake_arbitration.decision | Should Be 'run_now'
+            $promptPath = Join-Path $repoRoot 'tod/out/prompts/TSK-ANCHOR-SELECTION-CATEGORY-PRESERVED.md'
+            Test-Path -Path $promptPath -PathType Leaf | Should Be $true
+            $promptText = Get-Content -Path $promptPath -Raw
+            [string]$promptText | Should Match '(?m)^- Task Type:\s*read_only_assessment\s*$'
+            [string]$promptText | Should Match '(?m)^- Task Category:\s*anchor_selection\s*$'
         }
         finally {
             if ($fixture -and (Test-Path -Path $fixture.Root)) {
@@ -585,6 +620,8 @@ Validation Command: Select-String -Path runtime_remote_training/tod_independent_
             Set-ActiveIntakeLane -Fixture $fixture -TaskId 'TSKCHAT-DRAIN-ACTIVE' -ObjectiveId 'objective-drain-active' -Source 'operator_chat' -Priority 'operator_direct_objective' -LaneStatus 'completed' -TaskStatus 'completed'
             $low = New-QueuedIntakeItem -RequestId 'REQ-DRAIN-MIM' -TaskId 'TSK-DRAIN-MIM' -ObjectiveId 'objective-drain-mim' -Source 'mim_request' -Priority 'mim_request' -ReceivedAt '2026-05-07T00:00:00Z'
             $high = New-QueuedIntakeItem -RequestId 'REQ-DRAIN-REPAIR' -TaskId 'TSKCHAT-DRAIN-REPAIR' -ObjectiveId 'objective-drain-repair' -Source 'operator_chat' -Priority 'operator_admin_repair' -ReceivedAt '2026-05-07T00:01:00Z'
+            $low.expires_at = '2026-08-01T00:00:00Z'
+            $high.expires_at = '2026-08-01T00:00:00Z'
             Set-IntakeQueueItems -ActiveTaskId 'TSKCHAT-DRAIN-ACTIVE' -Items @($low, $high)
 
             $reported = (& $todScript -Action get-intake-arbitration -ConfigPath $fixture.ConfigPath -StatePath $fixture.StatePath | Out-String | ConvertFrom-Json)
@@ -603,13 +640,13 @@ Validation Command: Select-String -Path runtime_remote_training/tod_independent_
         }
     }
 
-    It 'does not promote expired accepted intake items during drain' {
+    It 'does not promote expired intake items during drain' {
         $fixture = New-IntakeStateFixture
         try {
             Set-ActiveIntakeLane -Fixture $fixture -TaskId 'TSKCHAT-DRAIN-EXPIRED-ACTIVE' -ObjectiveId 'objective-drain-expired-active' -Source 'operator_chat' -Priority 'operator_direct_objective' -LaneStatus 'completed' -TaskStatus 'completed'
-            $expired = New-QueuedIntakeItem -RequestId 'REQ-DRAIN-EXPIRED' -TaskId 'TSKCHAT-DRAIN-EXPIRED' -ObjectiveId 'objective-drain-expired' -Source 'operator_chat' -Priority 'operator_admin_repair' -ReceivedAt '2026-05-07T00:00:00Z' -Status 'accepted'
+            $expired = New-QueuedIntakeItem -RequestId 'REQ-DRAIN-EXPIRED' -TaskId 'TSKCHAT-DRAIN-EXPIRED' -ObjectiveId 'objective-drain-expired' -Source 'operator_chat' -Priority 'operator_admin_repair' -ReceivedAt '2026-05-07T00:00:00Z' -Status 'queued'
             $fresh = New-QueuedIntakeItem -RequestId 'REQ-DRAIN-FRESH' -TaskId 'TSKCHAT-DRAIN-FRESH' -ObjectiveId 'objective-drain-fresh' -Source 'operator_chat' -Priority 'operator_direct_objective' -ReceivedAt '2026-07-19T19:00:00Z'
-            $fresh.expires_at = '2026-07-20T19:00:00Z'
+            $fresh.expires_at = '2026-08-01T00:00:00Z'
             Set-IntakeQueueItems -ActiveTaskId 'TSKCHAT-DRAIN-EXPIRED-ACTIVE' -Items @($expired, $fresh)
 
             $reported = (& $todScript -Action get-intake-arbitration -ConfigPath $fixture.ConfigPath -StatePath $fixture.StatePath | Out-String | ConvertFrom-Json)
@@ -653,6 +690,7 @@ Validation Command: Select-String -Path runtime_remote_training/tod_independent_
         try {
             Set-ActiveIntakeLane -Fixture $fixture -TaskId 'TSKCHAT-DUPLICATE-DONE' -ObjectiveId 'objective-duplicate-done' -Source 'operator_chat' -Priority 'operator_admin_repair' -LaneStatus 'completed' -TaskStatus 'completed'
             $duplicate = New-QueuedIntakeItem -RequestId 'REQ-TSKCHAT-DUPLICATE-DONE' -TaskId 'TSKCHAT-DUPLICATE-DONE' -ObjectiveId 'objective-duplicate-done' -Priority 'operator_admin_repair'
+            $duplicate.expires_at = '2026-08-01T00:00:00Z'
             Set-IntakeQueueItems -ActiveTaskId 'TSKCHAT-DUPLICATE-DONE' -Items @($duplicate)
 
             $reported = (& $todScript -Action get-intake-arbitration -ConfigPath $fixture.ConfigPath -StatePath $fixture.StatePath | Out-String | ConvertFrom-Json)
@@ -676,6 +714,7 @@ Validation Command: Select-String -Path runtime_remote_training/tod_independent_
             $blocked = New-QueuedIntakeItem -RequestId 'REQ-BLOCKED-QUEUED' -TaskId 'TSKCHAT-BLOCKED-QUEUED' -ObjectiveId 'objective-blocked-queued' -Status 'blocked'
             $invalid = New-QueuedIntakeItem -RequestId 'REQ-INVALID-QUEUED' -TaskId '' -ObjectiveId 'objective-invalid-queued'
             $eligible = New-QueuedIntakeItem -RequestId 'REQ-ELIGIBLE-QUEUED' -TaskId 'TSKCHAT-ELIGIBLE-QUEUED' -ObjectiveId 'objective-eligible-queued' -Priority 'mim_request'
+            $eligible.expires_at = '2026-08-01T00:00:00Z'
             Set-IntakeQueueItems -ActiveTaskId 'TSKCHAT-DRAIN-SKIP-ACTIVE' -Items @($blocked, $invalid, $eligible)
 
             $reported = (& $todScript -Action get-intake-arbitration -ConfigPath $fixture.ConfigPath -StatePath $fixture.StatePath | Out-String | ConvertFrom-Json)
@@ -717,6 +756,52 @@ Validation Command: Select-String -Path runtime_remote_training/tod_independent_
         finally {
             if (Test-Path -Path $outputRoot) {
                 Remove-Item -Path $outputRoot -Recurse -Force
+            }
+        }
+    }
+
+    It 'packages tasks without optional description by falling back to scope text' {
+        $fixture = New-IntakeStateFixture
+        $promptPath = Join-Path $repoRoot 'tod/out/prompts/TSK-NO-DESCRIPTION.md'
+        try {
+            $state = Get-Content -Path $fixture.StatePath -Raw | ConvertFrom-Json
+            $state.objectives += [pscustomobject]@{
+                id = 'OBJ-NO-DESCRIPTION'
+                title = 'Objective without task description'
+                description = 'Objective description'
+                priority = 'high'
+                constraints = @()
+                success_criteria = @('prompt generated')
+                status = 'open'
+                created_at = (Get-Date).ToUniversalTime().ToString('o')
+                updated_at = (Get-Date).ToUniversalTime().ToString('o')
+            }
+            $state.tasks += [pscustomobject]@{
+                id = 'TSK-NO-DESCRIPTION'
+                objective_id = 'OBJ-NO-DESCRIPTION'
+                title = 'Task without optional description'
+                type = 'implementation'
+                task_category = 'chat_execution'
+                scope = 'Scope fallback should render as the task description.'
+                dependencies = @()
+                acceptance_criteria = @('prompt generated')
+                assigned_executor = 'local'
+                status = 'planned'
+                created_at = (Get-Date).ToUniversalTime().ToString('o')
+                updated_at = (Get-Date).ToUniversalTime().ToString('o')
+            }
+            Write-JsonNoBom -PathValue $fixture.StatePath -Payload $state
+
+            $null = & $todScript -Action package-task -TaskId 'TSK-NO-DESCRIPTION' -ConfigPath $fixture.ConfigPath -StatePath $fixture.StatePath
+            (Test-Path -Path $promptPath) | Should Be $true
+            [string](Get-Content -Path $promptPath -Raw) | Should Match 'Task Description: Scope fallback should render as the task description\.'
+        }
+        finally {
+            if (Test-Path -Path $promptPath) {
+                Remove-Item -Path $promptPath -Force
+            }
+            if ($fixture -and (Test-Path -Path $fixture.Root)) {
+                Remove-Item -Path $fixture.Root -Recurse -Force
             }
         }
     }

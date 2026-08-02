@@ -117,9 +117,20 @@ Describe 'TOD bounded edit materialization' {
         Import-TodFunction -Name 'Get-InferredBoundedValidationCommand'
         Import-TodFunction -Name 'Get-InferredBoundedReplaceDirective'
         Import-TodFunction -Name 'Get-BoundedEditSourceFileText'
+        Import-TodFunction -Name 'Get-SourceAnchorPacketTargetFileHint'
         Import-TodFunction -Name 'New-BoundedEditMaterializationBlockedPayload'
         Import-TodFunction -Name 'Resolve-TaskBoundedEditMaterialization'
+        Import-TodFunction -Name 'Convert-BoundedEditMaterializationToPromptBlock'
         Import-TodFunction -Name 'Test-TaskAllowsLocalExecutionWithoutMaterialization'
+        Import-TodFunction -Name 'Get-LocalExecutionValidationChecks'
+        Import-TodFunction -Name 'Get-LocalExecutionCommandCapture'
+        Import-TodFunction -Name 'Get-LocalExecutionRollbackState'
+        Import-TodFunction -Name 'Resolve-LocalExecutionTaskClass'
+        Import-TodFunction -Name 'Test-LocalExecutionPatchRequired'
+        Import-TodFunction -Name 'Get-LocalExecutionNoOpAssessment'
+        Import-TodFunction -Name 'Test-TodWrapperOnlyChangedPath'
+        Import-TodFunction -Name 'Get-LocalExecutionRequiredValidationFailures'
+        Import-TodFunction -Name 'Get-TodMaterialImplementationProofAssessment'
         Import-TodFunction -Name 'Sync-CodexHandoffTaskMirror'
     }
 
@@ -157,6 +168,47 @@ No code changes.
         Test-TaskAllowsLocalExecutionWithoutMaterialization -Task $task -TaskCategory 'source_anchor_observation' | Should Be $true
     }
 
+    It 'allows anchor-selection inspection tasks without treating source and output paths as edit targets' {
+        $task = [pscustomobject]@{
+            id = 'TSK-ANCHOR-SELECTION-INSPECTION'
+            title = 'Select fresh current-code anchor for packet loop'
+            type = 'inspection'
+            task_category = 'source_anchor_observation'
+            scope = @'
+Task mode: anchor_selection
+Anchor selection for a fresh current-code packet loop.
+Source File: scripts/engines/LocalExecutionEngine.ps1
+Output: runtime_remote_training/read_only_audit_artifacts/TOD_FRESH_CURRENT_CODE_ANCHOR_SELECTION_TEST.latest.json
+Mission: Select one unique source anchor from the current code for a later bounded packet. Do not modify source code.
+'@
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'not_required'
+        [string]$materialization.reason_code | Should Be 'canonical_read_only_task_mode_valid'
+        [string]$materialization.edit_mode | Should Be 'read_only'
+        @($materialization.target_file_candidates).Count | Should Be 0
+        Test-TaskAllowsLocalExecutionWithoutMaterialization -Task $task -TaskCategory 'source_anchor_observation' -TaskMaterialization $materialization | Should Be $true
+    }
+
+    It 'renders not-required materialization without converting it into a blocked package block' {
+        $materialization = [pscustomobject]@{
+            status = 'not_required'
+            blocked = $false
+            reason_code = 'canonical_read_only_task_mode_valid'
+            task_mode = 'inspection'
+            edit_mode = 'read_only'
+            why_local_executor_can_proceed = 'Read-only TOD task modes do not require bounded edit materialization or a target_file.'
+        }
+
+        $block = Convert-BoundedEditMaterializationToPromptBlock -Materialization $materialization
+
+        [string]$block | Should Match 'Materialization Status: not_required'
+        [string]$block | Should Match 'Reason Code: canonical_read_only_task_mode_valid'
+        [string]$block | Should Not Match 'blocked_missing_bounded_edit_mode'
+    }
+
     It 'treats target-selection training as local observe-only work until a bounded edit target exists' {
         $task = [pscustomobject]@{
             id = 'TSK-TARGET-SELECTION-RUNG'
@@ -189,6 +241,76 @@ New Text: beta
         Test-TaskAllowsLocalExecutionWithoutMaterialization -Task $boundedTask -TaskCategory 'training' | Should Be $false
     }
 
+    It 'lets explicit target_selection discovery artifacts bypass bounded edit materialization' {
+        $task = [pscustomobject]@{
+            id = 'TSK-TARGET-SELECTION-DISCOVERY'
+            title = 'TOD target selection discovery rung'
+            type = 'implementation'
+            task_category = 'target_selection'
+            scope = @'
+Different-target discovery.
+Target File: runtime_remote_training/tod_independent_resolution_attempts/TOD_DIFFERENT_TARGET_DISCOVERY_DRILL.latest.json
+Required output: selected_candidate_or_none with target_file and validation_command.
+Do not modify source code.
+'@
+        }
+
+        Test-TaskAllowsLocalExecutionWithoutMaterialization -Task $task -TaskCategory 'target_selection' | Should Be $true
+    }
+
+    It 'keeps explicit packet formation when the prompt references prior target-selection evidence' {
+        $task = [pscustomobject]@{
+            id = 'TSK-PACKET-FROM-TARGET-SELECTION'
+            title = 'TOD packet formation from selected source'
+            type = 'implementation'
+            task_category = 'packet_formation'
+            scope = @'
+Task mode: packet_formation
+Input Artifact: runtime_remote_training/tod_independent_resolution_attempts/TOD_TARGET_SELECTION.latest.json
+Read the target-selection artifact and synthesize a packet from the selected source file.
+'@
+        }
+
+        Resolve-TaskCategory -Task $task | Should Be 'packet_formation'
+        Resolve-TodTaskMode -Task $task | Should Be 'implementation'
+        Resolve-LocalExecutionTaskClass -Task $task | Should Be 'implementation'
+    }
+
+    It 'does not require material source edits for target-selection evidence tasks' {
+        $task = [pscustomobject]@{
+            id = 'TSK-TARGET-SELECTION-PROOF'
+            title = 'TOD target selection proof'
+            type = 'implementation'
+            task_category = 'target_selection'
+            scope = @'
+Task mode: target_selection
+Select one fresh target for a later bounded edit packet.
+Publish target-selection evidence without modifying source code.
+'@
+        }
+        $resultPayload = [pscustomobject]@{
+            files_changed = @()
+            tests_run = @('target-selection evidence')
+            test_results = @('pass')
+            structured_findings = @()
+            no_change_required = $false
+        }
+
+        Resolve-LocalExecutionTaskClass -Task $task | Should Be 'target_selection'
+        Test-LocalExecutionPatchRequired -Task $task | Should Be $false
+
+        $noOpAssessment = Get-LocalExecutionNoOpAssessment -Task $task -ResultPayload $resultPayload
+        [string]$noOpAssessment.task_class | Should Be 'target_selection'
+        [bool]$noOpAssessment.patch_required | Should Be $false
+        [bool]$noOpAssessment.detected | Should Be $false
+
+        $proof = Get-TodMaterialImplementationProofAssessment -Task $task -ResultPayload $resultPayload -NoOpAssessment $noOpAssessment -ValidationResults @([pscustomobject]@{ name = 'target-selection evidence'; passed = $true; required = $true })
+        [string]$proof.task_class | Should Be 'target_selection'
+        [bool]$proof.patch_required | Should Be $false
+        [bool]$proof.exempt | Should Be $true
+        [bool]$proof.allows_authoritative_completion | Should Be $true
+    }
+
     It 'allows report-only read-only audit tasks with stale blocked materialization to reach LocalExecutionEngine' {
         $task = [pscustomobject]@{
             id = 'TSK-MAT-STALE-AUDIT'
@@ -206,6 +328,45 @@ New Text: beta
         }
 
         Test-TaskAllowsLocalExecutionWithoutMaterialization -Task $task -TaskCategory 'report_only' -TaskMaterialization $materialization | Should Be $true
+    }
+
+    It 'lets explicit inspection mode outrank bridge implementation wrappers and artifact path noise' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-INSPECTION-BRIDGE-WRAPPER'
+            title = 'Inspect selector authority role classification failure'
+            type = 'implementation'
+            task_category = 'config_change'
+            scope = @'
+Task mode: inspection
+Read-only selector authority inspection.
+
+Evidence Artifact: runtime_remote_training/read_only_audit_artifacts/TOD_SELECTOR_AUTHORITY_BLOCKER_20260722.latest.json
+Package Path: tod/out/prompts/TOD-FRESH-TARGET-ANCHOR-SELECTION-V1B.md
+Inspect Source File: scripts/TOD.ps1
+Inspect Source File: scripts/engines/LocalExecutionEngine.ps1
+Output: runtime_remote_training/read_only_audit_artifacts/TOD_SELECTOR_AUTHORITY_ROLE_CLASSIFICATION.latest.json
+
+Do not modify source code.
+Do not create a bounded edit packet in this task.
+Do not treat Package Path, Evidence Artifact, Output, or Inspect Source File as edit targets.
+'@
+        }
+        $materialization = [pscustomobject]@{
+            status = 'blocked'
+            reason_code = 'blocked_missing_bounded_edit_mode'
+            target_file_candidates = @(
+                'runtime_remote_training/read_only_audit_artifacts/TOD_SELECTOR_AUTHORITY_BLOCKER_20260722.latest.json',
+                'tod/out/prompts/TOD-FRESH-TARGET-ANCHOR-SELECTION-V1B.md',
+                'scripts/TOD.ps1',
+                'scripts/engines/LocalExecutionEngine.ps1',
+                'runtime_remote_training/read_only_audit_artifacts/TOD_SELECTOR_AUTHORITY_ROLE_CLASSIFICATION.latest.json'
+            )
+        }
+
+        Resolve-TodTaskMode -Task $task | Should Be 'inspection'
+        Resolve-LocalExecutionTaskClass -Task $task | Should Be 'inspection_only'
+        Test-LocalExecutionPatchRequired -Task $task | Should Be $false
+        Test-TaskAllowsLocalExecutionWithoutMaterialization -Task $task -TaskCategory 'config_change' -TaskMaterialization $materialization | Should Be $true
     }
 
     It 'reads routing text from JSON-deserialized task properties' {
@@ -509,6 +670,76 @@ Validation Command: powershell -NoProfile -ExecutionPolicy Bypass -File tests\TO
         [string]$materialization.prompt_directives['Validation Command'] | Should Match 'TOD.CanonicalLanePublisherGate.Tests.ps1'
     }
 
+    It 'uses source-anchor observation source_file as the packet bounded edit target' {
+        $anchorRel = 'runtime_remote_training/read_only_audit_artifacts/TOD_SOURCE_ANCHOR_TARGET_DISAMBIG_TEST.latest.json'
+        $packetRel = 'runtime_remote_training/tod_independent_resolution_attempts/TOD_SOURCE_ANCHOR_TARGET_DISAMBIG_TEST.latest.json'
+        $sourceRel = 'tmp_remote_mim/core/routers/studio.py'
+        $anchorPath = Join-Path $repoRoot ($anchorRel -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        Write-JsonNoBom -PathValue $anchorPath -Payload ([pscustomobject]@{
+            artifact_type = 'tod_source_anchor_observation'
+            source_file = $sourceRel
+            exact_text = 'router = APIRouter()'
+            start_line = 59
+            end_line = 59
+            no_code_changes = $true
+        })
+
+        try {
+            $task = [pscustomobject]@{
+                id = 'TSK-SOURCE-ANCHOR-TARGET-DISAMBIG'
+                title = 'Materialize source-anchor packet without explicit target'
+                task_category = 'packet_formation'
+                allowed_files = @($anchorRel, $packetRel, $sourceRel)
+                scope = @"
+Source-anchor packet directive materialization.
+Input Artifact: $anchorRel
+Output artifact: $packetRel
+Validation Command: python -m py_compile $sourceRel
+Validation Pattern: TOD training marker
+Closure Evidence: Packet target comes from source-anchor source_file, not input or output artifacts.
+Prevention Lesson: Source-anchor packet tasks may contain evidence artifacts and source files, but only the source_file is the bounded edit target.
+Dave Needed: no
+"@
+            }
+
+            $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+            [string]$materialization.status | Should Be 'materialized'
+            @($materialization.target_file_candidates).Count | Should Be 1
+            [string]@($materialization.target_files)[0] | Should Be $sourceRel
+            [string]$materialization.prompt_directives['Target File'] | Should Be $sourceRel
+        }
+        finally {
+            Remove-Item -Path $anchorPath -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    It 'allows source-anchor packet directive tasks without treating input and output artifacts as edit targets' {
+        $anchorRel = 'runtime_remote_training/read_only_audit_artifacts/TOD_SOURCE_ANCHOR_PACKET_DIRECTIVE_GATE_TEST.latest.json'
+        $packetRel = 'runtime_remote_training/tod_independent_resolution_attempts/TOD_SOURCE_ANCHOR_PACKET_DIRECTIVE_GATE_TEST.latest.json'
+        $task = [pscustomobject]@{
+            id = 'TSK-SOURCE-ANCHOR-PACKET-DIRECTIVE-GATE'
+            title = 'Materialize source-anchor packet directive'
+            task_category = 'packet_formation'
+            scope = @"
+Source-anchor packet directive materialization.
+Input Artifact: $anchorRel
+Output Artifact: $packetRel
+Closure Evidence: Packet directive should be materialized by LocalExecutionEngine from the source-anchor artifact.
+Prevention Lesson: Input and output artifacts are evidence paths, not bounded edit targets.
+Dave Needed: no
+"@
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'not_required'
+        [string]$materialization.reason_code | Should Be 'source_anchor_packet_directive_materialization_valid'
+        [bool]$materialization.target_file_required | Should Be $false
+        @($materialization.target_file_candidates).Count | Should Be 0
+        Test-TaskAllowsLocalExecutionWithoutMaterialization -Task $task -TaskCategory 'packet_formation' -TaskMaterialization $materialization | Should Be $true
+    }
+
     It 'tolerates noisy slash-bearing hints with path-illegal characters' {
         $hints = Get-CanonicalBoundedTargetFileHints -FileHints @(
             'runtime_remote_training/tod_result_artifacts/TOD_FIELD_PRESERVATION_SMOKE.latest.json',
@@ -717,6 +948,81 @@ Do not modify source.
         Test-TaskAllowsLocalExecutionWithoutMaterialization -Task $task -TaskCategory 'read_only_assessment' -TaskMaterialization $materialization | Should Be $true
     }
 
+    It 'does not materialize read-only input and output artifacts as edit target candidates' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-READONLY-ARTIFACTS'
+            title = 'Classify direct-chat read-only artifact proof'
+            type = 'read_only_assessment'
+            task_category = 'read_only_assessment'
+            task_mode = 'read_only_assessment'
+            scope = @'
+Read-only audit assessment.
+Input Artifact: runtime_remote_training/read_only_audit_artifacts/TOD_READONLY_DIRECT_CHAT_MODE_PRESERVATION_PROOF.latest.json
+Output Artifact: runtime_remote_training/read_only_audit_artifacts/TOD_EMPTY_SIGNAL_SINGLE_EVIDENCE_PROOF.latest.json
+Do not modify source code. Do not require target_file. Do not require bounded_edit_mode.
+'@
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'not_required'
+        [string]$materialization.reason_code | Should Be 'canonical_read_only_task_mode_valid'
+        [bool]$materialization.blocked | Should Be $false
+        [bool]$materialization.target_file_required | Should Be $false
+        @($materialization.target_file_candidates).Count | Should Be 0
+        Test-TaskAllowsLocalExecutionWithoutMaterialization -Task $task -TaskCategory 'read_only_assessment' -TaskMaterialization $materialization | Should Be $true
+    }
+
+    It 'lets source-anchor delta proposal artifacts bypass bounded edit target inference' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-SOURCE-ANCHOR-DELTA'
+            title = 'Propose source-anchor delta'
+            type = 'report'
+            task_category = 'artifact_write'
+            scope = @'
+Input Artifact: runtime_remote_training/read_only_audit_artifacts/TOD_SOURCE_ANCHOR.latest.json
+Output Artifact: runtime_remote_training/engineering_corpus/TOD_SOURCE_ANCHOR_DELTA.latest.json
+Required Artifact Type: tod_source_anchor_delta_proposal
+Do not modify source code.
+'@
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'not_required'
+        [string]$materialization.reason_code | Should Be 'supported_read_only_artifact_write_contract_valid'
+        [bool]$materialization.blocked | Should Be $false
+        [bool]$materialization.target_file_required | Should Be $false
+        @($materialization.target_file_candidates).Count | Should Be 0
+        Test-TaskAllowsLocalExecutionWithoutMaterialization -Task $task -TaskCategory 'artifact_write' -TaskMaterialization $materialization | Should Be $true
+    }
+
+    It 'lets read-only evidence comparison artifacts bypass bounded edit target inference' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-EVIDENCE-COMPARISON'
+            title = 'Compare passing and blocked evidence'
+            type = 'report'
+            task_category = 'artifact_write'
+            scope = @'
+Left Artifact: runtime_remote_training/engineering_corpus/PASSING.latest.json
+Right Artifact: tod/out/prompts/BLOCKED.md
+Output Artifact: runtime_remote_training/engineering_corpus/TOD_EVIDENCE_COMPARISON.latest.json
+Required Artifact Type: tod_read_only_evidence_comparison
+Do not modify source code.
+'@
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'not_required'
+        [string]$materialization.reason_code | Should Be 'supported_read_only_artifact_write_contract_valid'
+        [string]$materialization.required_artifact_type | Should Be 'tod_read_only_evidence_comparison'
+        [bool]$materialization.blocked | Should Be $false
+        [bool]$materialization.target_file_required | Should Be $false
+        @($materialization.target_file_candidates).Count | Should Be 0
+        Test-TaskAllowsLocalExecutionWithoutMaterialization -Task $task -TaskCategory 'artifact_write' -TaskMaterialization $materialization | Should Be $true
+    }
+
     It 'lets explicit read-only task type outrank generic chat execution category' {
         $task = [pscustomobject]@{
             id = 'TSK-MAT-READONLY-CHAT-WRAPPED'
@@ -758,6 +1064,36 @@ Classify patch evidence for route-level hardcoded response authority and learned
         [string]$materialization.reason_code | Should Be 'blocked_missing_bounded_edit_mode'
         (@($materialization.required_clarification) -contains 'edit_mode') | Should Be $true
         [string]@($materialization.target_file_candidates)[0] | Should Be 'scripts/Start-TOD-UI.ps1'
+    }
+
+    It 'blocks MIM-synced implementation tasks with a recovery contract instead of losing packet guidance' {
+        $task = [pscustomobject]@{
+            id = 'TSK-MAT-MIM-SYNCED-NO-DIRECTIVE'
+            title = 'MIM synchronized implementation task'
+            scope = 'Implement a bounded strategy shift that breaks identical blocked-result loops for the active objective.'
+            task_category = 'mim_synced'
+            type = 'implementation'
+            target_file = 'core/autonomy_driver_service.py'
+            bounded_edit_mode = $true
+            validation_only = $false
+            metadata_json = [pscustomobject]@{
+                task_description = 'Implement a bounded strategy shift that breaks identical blocked-result loops for the active objective.'
+                task_acceptance_criteria = 'Publish bounded execution evidence and validation output.'
+                target_file = 'core/autonomy_driver_service.py'
+                bounded_edit_mode = $true
+                validation_only = $false
+                task_mode = 'implementation'
+            }
+        }
+
+        $materialization = Resolve-TaskBoundedEditMaterialization -Task $task
+
+        [string]$materialization.status | Should Be 'blocked'
+        [string]$materialization.reason_code | Should Be 'blocked_missing_bounded_edit_mode'
+        [string]$materialization.recovery_contract.status | Should Be 'packet_required_before_local_execution'
+        [string]$materialization.recovery_contract.target_file | Should Be 'core/autonomy_driver_service.py'
+        (@($materialization.recovery_contract.required_packet_fields) -contains 'exact_current_anchor_or_old_text') | Should Be $true
+        [string]$materialization.recovery_contract.dave_needed | Should Be 'no'
     }
 
     It 'blocks missing target_file with exact missing field' {
@@ -955,13 +1291,9 @@ Edit Mode: replace_exact_text
             [string]$result.engine_invocation.result.recovery_state | Should Be 'blocked_with_reason'
             [bool]$result.post_completion_tail_skipped | Should Be $true
             @($result.published_artifacts.artifact_paths | Where-Object { [System.IO.Path]::GetFileName([string]$_) -eq 'TOD_EXECUTION_RESULT.latest.json' }).Count | Should BeGreaterThan 0
-
-            $executionResultPath = Join-Path $repoRoot 'runtime/shared/TOD_EXECUTION_RESULT.latest.json'
-            (Test-Path -Path $executionResultPath) | Should Be $true
-            $executionResult = Get-Content -Raw $executionResultPath | ConvertFrom-Json
-            [string]$executionResult.task_id | Should Be 'TSK-MAT-RUN'
-            [string]$executionResult.status | Should Be 'blocked'
-            [string]$executionResult.reason_code | Should Be 'blocked_missing_bounded_edit_mode'
+            [string]$result.engine_invocation.result.task_id | Should Be 'TSK-MAT-RUN'
+            [string]$result.engine_invocation.result.status | Should Be 'failed'
+            [string]$result.engine_invocation.result.reason_code | Should Be 'blocked_missing_bounded_edit_mode'
 
             $stateAfter = Get-Content -Raw $fixture.TodStatePath | ConvertFrom-Json
             $taskAfter = @($stateAfter.tasks | Where-Object { [string]$_.id -eq 'TSK-MAT-RUN' } | Select-Object -First 1)

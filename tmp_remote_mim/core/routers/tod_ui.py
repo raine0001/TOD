@@ -2789,6 +2789,197 @@ def _build_tod_status_truth_object(state: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _human_tod_target(objective_id: str, task_id: str, title: str = "") -> str:
+    """Prefer the objective name over request-specific identifiers in operator prose."""
+    objective = _compact_text(objective_id, 120)
+    task = _compact_text(task_id, 120)
+    title_text = _compact_text(title, 120)
+    if objective:
+        return f"the {objective} objective"
+    if title_text and "mim-request-" not in title_text.lower():
+        return title_text
+    if task:
+        base = re.sub(r"-?mim-request-[0-9a-f-]+$", "", task, flags=re.IGNORECASE).strip("-_ ")
+        base = base.replace("-", " ").replace("_", " ").strip()
+        if base:
+            return f"the {base} task"
+    return "the active TOD work"
+
+
+def _actionable_next_from_blocker(next_action: str, blocker: str, validation: str = "") -> str:
+    """Use TOD's blocker evidence when the published next-action field is too generic."""
+    text = _clean_operator_status_text(next_action, 520)
+    generic_next = text.lower() in {
+        "",
+        "blocked",
+        "blocked with reason",
+        "replan required",
+        "replan required after local fallback",
+    }
+    if not generic_next:
+        return text
+    blocker_text = _clean_operator_status_text(blocker, 520)
+    if "must " in blocker_text.lower():
+        match = re.search(r"\bmust\s+(.+?)(?:\.|$)", blocker_text, flags=re.IGNORECASE)
+        if match:
+            action = match.group(1).strip()
+            if action.lower().startswith(("materialize ", "publish ", "rerun ", "validate ", "inspect ")):
+                return action[0].upper() + action[1:]
+            return f"Produce {action[0].lower() + action[1:] if action else action}"
+    if validation:
+        return f"rerun {validation} after publishing the missing evidence"
+    if blocker_text:
+        return "back up one step, publish the missing evidence, and retry the bounded lane"
+    return "wait for a fresh TOD execution artifact"
+
+
+def _build_tod_progress_narrative(
+    state: dict[str, Any],
+    truth: dict[str, Any],
+    execution: dict[str, Any],
+    timeline: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    """Turn TOD's published evidence into operator-readable progress notes."""
+    state = state if isinstance(state, dict) else {}
+    truth = truth if isinstance(truth, dict) else {}
+    execution = execution if isinstance(execution, dict) else {}
+    training = state.get("training_status") if isinstance(state.get("training_status"), dict) else {}
+    phase_progress = execution.get("phase_progress") if isinstance(execution.get("phase_progress"), dict) else {}
+
+    updated_at = _pick_first_text(truth.get("last_update_at"), execution.get("updated_at"), state.get("generated_at"))
+    created_age = _format_age(updated_at)
+    status_label = _compact_text(truth.get("status_label") or execution.get("activity_label"), 90) or "Status"
+    status_code = _compact_text(truth.get("status_code") or execution.get("activity_state"), 80).lower()
+    objective_id = _compact_text(truth.get("objective_id") or execution.get("objective_id"), 150)
+    task_id = _compact_text(truth.get("task_id") or execution.get("task_id"), 150)
+    target = _human_tod_target(objective_id, task_id, str(execution.get("title") or ""))
+    phase = _compact_text(truth.get("current_phase") or phase_progress.get("label") or execution.get("phase"), 90)
+    working = _clean_operator_status_text(
+        _pick_first_text(truth.get("current_action"), execution.get("current_action"), execution.get("activity_summary"), execution.get("summary")),
+        520,
+    )
+    blocker = _clean_operator_status_text(
+        _pick_first_text(truth.get("blocker"), execution.get("wait_reason"), execution.get("wait_target_label"), execution.get("wait_target")),
+        520,
+    )
+    next_action = _clean_operator_status_text(
+        _pick_first_text(truth.get("next_action"), execution.get("next_step"), execution.get("next_validation")),
+        520,
+    )
+    validation = _clean_operator_status_text(
+        _pick_first_text(truth.get("validation"), execution.get("validation_summary"), execution.get("next_validation")),
+        420,
+    )
+    evidence = _clean_operator_status_text(
+        _pick_first_text(truth.get("evidence"), execution.get("command_output"), execution.get("reason_code")),
+        420,
+    )
+    next_action = _actionable_next_from_blocker(next_action, blocker, validation)
+
+    entries: list[dict[str, str]] = []
+
+    if bool(truth.get("blocked")) or status_code in {"blocked", "stalled"}:
+        detail = _pick_first_text(
+            blocker,
+            working,
+            "TOD has published a blocker but has not published the blocking evidence text yet.",
+        )
+        headline = "TOD is blocked"
+        body = f"TOD is working on {target}, but the current phase is blocked. {detail}"
+    elif status_code in {"complete", "completed"}:
+        headline = "TOD completed the latest step"
+        body = _pick_first_text(
+            working,
+            f"TOD completed the latest step for {target}.",
+        )
+    elif status_code in {"working", "running", "executing", "waiting"}:
+        headline = "TOD is working"
+        body = _pick_first_text(
+            working,
+            f"TOD is working through {phase or 'the current phase'} for {target}.",
+        )
+    else:
+        headline = "TOD status is visible"
+        body = _pick_first_text(
+            working,
+            f"TOD has a published status for {target}, but no active work detail is available yet.",
+        )
+
+    entries.append(
+        {
+            "id": "tod-progress-now",
+            "label": headline,
+            "detail": _compact_text(body, 720),
+            "created_at": updated_at,
+            "created_age": created_age,
+        }
+    )
+
+    if next_action:
+        entries.append(
+            {
+                "id": "tod-progress-next",
+                "label": "Next move",
+                "detail": _compact_text(f"The next thing TOD should do is {next_action}", 620),
+                "created_at": updated_at,
+                "created_age": created_age,
+            }
+        )
+
+    if validation or evidence:
+        proof_text = validation if validation and evidence.lower() in validation.lower() else _pick_first_text(
+            f"{validation} Evidence: {evidence}" if validation and evidence else "",
+            validation,
+            evidence,
+        )
+        entries.append(
+            {
+                "id": "tod-progress-proof",
+                "label": "Proof checked",
+                "detail": _compact_text(proof_text, 620),
+                "created_at": updated_at,
+                "created_age": created_age,
+            }
+        )
+
+    if bool(training.get("active")):
+        training_step = _clean_operator_status_text(
+            _pick_first_text(training.get("current_step"), training.get("summary"), training.get("phase_detail")),
+            420,
+        )
+        if training_step:
+            entries.append(
+                {
+                    "id": "tod-progress-training",
+                    "label": "Training context",
+                    "detail": _compact_text(training_step, 560),
+                    "created_at": updated_at,
+                    "created_age": created_age,
+                }
+            )
+
+    if len(entries) < 2:
+        for item in timeline[:2]:
+            if not isinstance(item, dict):
+                continue
+            detail = _clean_operator_status_text(item.get("detail") or item.get("summary"), 500)
+            if not detail:
+                continue
+            entries.append(
+                {
+                    "id": f"tod-progress-{len(entries) + 1}",
+                    "label": _compact_text(item.get("label"), 90) or "Execution evidence",
+                    "detail": detail,
+                    "created_at": str(item.get("created_at") or updated_at or "").strip(),
+                    "created_age": str(item.get("created_age") or created_age or "").strip(),
+                }
+            )
+            if len(entries) >= 3:
+                break
+
+    return entries[:5]
+
+
 def _build_tod_operator_workspace(state: dict[str, Any]) -> dict[str, Any]:
     """Build the compact live-work model used by the Studio TOD page."""
     state = state if isinstance(state, dict) else {}
@@ -2860,6 +3051,8 @@ def _build_tod_operator_workspace(state: dict[str, Any]) -> dict[str, Any]:
             }
         )
 
+    narrative = _build_tod_progress_narrative(state, truth, execution, timeline)
+
     return {
         "schema_version": "tod-operator-workspace-v1",
         "status_code": status_code,
@@ -2879,6 +3072,7 @@ def _build_tod_operator_workspace(state: dict[str, Any]) -> dict[str, Any]:
             "state": str(training.get("state_label") or training.get("state") or "").strip(),
             "current_step": _compact_text(training.get("current_step") or training.get("summary"), 220),
         },
+        "narrative": narrative,
         "timeline": timeline,
         "controls": queue_items,
         "source_artifacts": source_artifacts,
@@ -6823,6 +7017,8 @@ def _clean_operator_status_text(value: Any, limit: int = 220) -> str:
     text = _compact_text(value, limit)
     if not text:
         return ""
+    if "#< CLIXML" in text or "<Objs " in text or "System.Management.Automation" in text:
+        return "Raw command output was captured and is available in the detailed evidence view."
     text = re.sub(r"^\s*[A-Z_ ]+\s*-\s*", "", text).strip()
     text = re.sub(r"\brequest_id=[^,;. ]+", "request", text)
     text = re.sub(r"\btask_id=[^,;. ]+", "task", text)
@@ -9421,10 +9617,12 @@ async def tod_console(request: Request) -> HTMLResponse:
                 .operator-field-value {{ margin-top: 6px; font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; }}
                 .operator-timeline {{ display: grid; gap: 10px; margin-top: 14px; max-height: 300px; overflow-y: auto; padding-right: 4px; }}
                 .operator-event {{ border: 1px solid rgba(97,219,191,0.16); border-radius: 10px; background: rgba(2,12,10,0.72); padding: 11px 12px; }}
+                .operator-event.narrative-event {{ background: rgba(7,18,24,0.84); border-color: rgba(112,199,255,0.24); }}
                 .operator-event-top {{ display: flex; justify-content: space-between; gap: 12px; align-items: baseline; flex-wrap: wrap; }}
                 .operator-event-label {{ color: var(--accent); font-size: 12px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }}
                 .operator-event-time {{ color: var(--muted); font-size: 12px; }}
                 .operator-event-detail {{ margin-top: 7px; font-size: 13px; line-height: 1.45; color: var(--ink); overflow-wrap: anywhere; }}
+                .operator-event.narrative-event .operator-event-detail {{ font-size: 14px; line-height: 1.55; color: #dff7ff; }}
                 .tod-activity-strip {{ display: grid; gap: 14px; margin: 0 24px 24px; padding: 18px; border: 1px solid rgba(97,219,191,0.18); border-radius: 14px; background: rgba(3,15,13,0.78); }}
                 .tod-activity-head {{ display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; flex-wrap: wrap; }}
                 .tod-activity-copy {{ display: grid; gap: 6px; min-width: 0; }}
@@ -9948,7 +10146,8 @@ async def tod_console(request: Request) -> HTMLResponse:
         }}
         if (todOperatorTimeline) {{
             clearNode(todOperatorTimeline);
-            const timeline = Array.isArray(payload.timeline) ? payload.timeline : [];
+            const narrative = Array.isArray(payload.narrative) ? payload.narrative : [];
+            const timeline = narrative.length ? narrative : (Array.isArray(payload.timeline) ? payload.timeline : []);
             if (!timeline.length) {{
                 const empty = document.createElement('article');
                 empty.className = 'operator-event';
@@ -9957,7 +10156,7 @@ async def tod_console(request: Request) -> HTMLResponse:
             }} else {{
                 timeline.slice(0, 10).forEach((item) => {{
                     const event = document.createElement('article');
-                    event.className = 'operator-event';
+                    event.className = narrative.length ? 'operator-event narrative-event' : 'operator-event';
                     const top = document.createElement('div');
                     top.className = 'operator-event-top';
                     const label = document.createElement('div');

@@ -890,23 +890,68 @@ switch ($Action) {
     }
 
     "index-repo" {
-        $excludeDirs = @(".git", "node_modules", ".venv", "venv", "__pycache__")
+        $excludeDirNames = [System.Collections.Generic.HashSet[string]]::new(
+            [string[]]@(".git", "node_modules", ".venv", "venv", "__pycache__", ".pytest_cache"),
+            [System.StringComparer]::OrdinalIgnoreCase
+        )
+        $excludeRootNames = [System.Collections.Generic.HashSet[string]]::new(
+            [string[]]@("backups", "models", "out", "runtime", "runtime_backups", "runtime_remote_training", "tmp"),
+            [System.StringComparer]::OrdinalIgnoreCase
+        )
+        $excludeRelativePrefixes = [System.Collections.Generic.HashSet[string]]::new(
+            [string[]]@(
+                "shared_state/dialog",
+                "shared_state/conversation_eval",
+                "shared_state/tod_shared_artifact_write_failures",
+                "tmp_remote_mim/runtime",
+                "tod/out",
+                "tod/sandbox"
+            ),
+            [System.StringComparer]::OrdinalIgnoreCase
+        )
+        $files = [System.Collections.Generic.List[System.IO.FileInfo]]::new()
+        $directoryItems = [System.Collections.Generic.List[System.IO.DirectoryInfo]]::new()
+        $pendingDirectories = [System.Collections.Generic.Stack[System.IO.DirectoryInfo]]::new()
 
-        $files = Get-ChildItem -Path $repoRoot -Recurse -File |
-            Where-Object {
-                $full = $_.FullName
-                -not ($excludeDirs | ForEach-Object { $full -like "*\\$_\\*" } | Where-Object { $_ })
+        foreach ($rootDirectory in @(Get-ChildItem -LiteralPath $repoRoot -Directory -Force -ErrorAction SilentlyContinue)) {
+            if ($excludeDirNames.Contains($rootDirectory.Name) -or
+                $excludeRootNames.Contains($rootDirectory.Name) -or
+                ($rootDirectory.Name -like "tmp_*" -and $rootDirectory.Name -ne "tmp_remote_mim")) {
+                continue
             }
+            $pendingDirectories.Push($rootDirectory)
+        }
+        foreach ($rootFile in @(Get-ChildItem -LiteralPath $repoRoot -File -Force -ErrorAction SilentlyContinue)) {
+            $files.Add($rootFile)
+        }
 
-        $topFolders = Get-ChildItem -Path $repoRoot -Directory |
-            Select-Object Name,
-                @{ Name = "file_count"; Expression = { (Get-ChildItem -Path $_.FullName -Recurse -File -ErrorAction SilentlyContinue).Count } }
+        while ($pendingDirectories.Count -gt 0) {
+            $directory = $pendingDirectories.Pop()
+            $directoryItems.Add($directory)
+            foreach ($file in @(Get-ChildItem -LiteralPath $directory.FullName -File -Force -ErrorAction SilentlyContinue)) {
+                $files.Add($file)
+            }
+            foreach ($childDirectory in @(Get-ChildItem -LiteralPath $directory.FullName -Directory -Force -ErrorAction SilentlyContinue)) {
+                $relativeChild = (To-RepoRelativePath -FullPath $childDirectory.FullName) -replace "\\", "/"
+                if (-not $excludeDirNames.Contains($childDirectory.Name) -and
+                    -not $excludeRelativePrefixes.Contains($relativeChild)) {
+                    $pendingDirectories.Push($childDirectory)
+                }
+            }
+        }
 
-        $directories = Get-ChildItem -Path $repoRoot -Recurse -Directory |
-            Where-Object {
-                $full = $_.FullName
-                -not ($excludeDirs | ForEach-Object { $full -like "*\\$_\\*" } | Where-Object { $_ })
-            } |
+        $topFolderCounts = @{}
+        foreach ($file in $files) {
+            $relativeFile = To-RepoRelativePath -FullPath $file.FullName
+            $topFolder = ($relativeFile -split "[\\/]", 2)[0]
+            if (-not $topFolderCounts.ContainsKey($topFolder)) { $topFolderCounts[$topFolder] = 0 }
+            $topFolderCounts[$topFolder]++
+        }
+        $topFolders = Get-ChildItem -LiteralPath $repoRoot -Directory -Force -ErrorAction SilentlyContinue |
+            Where-Object { $topFolderCounts.ContainsKey($_.Name) } |
+            Select-Object Name, @{ Name = "file_count"; Expression = { $topFolderCounts[$_.Name] } }
+
+        $directories = $directoryItems |
             ForEach-Object { To-RepoRelativePath -FullPath $_.FullName }
 
         $allFiles = $files | ForEach-Object { To-RepoRelativePath -FullPath $_.FullName }

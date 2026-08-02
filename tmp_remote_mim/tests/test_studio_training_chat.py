@@ -6,6 +6,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
+from pydantic import ValidationError
+
 
 _STUDIO_MODULE = None
 _PURPOSE_MODULE = None
@@ -32,6 +34,31 @@ def _load_gateway_functions(*names):
     namespace = {}
     exec(compile(module_ast, str(source_path), "exec"), namespace)
     return {name: namespace[name] for name in names}
+
+
+def _load_studio_chat_request_model():
+    root = Path(__file__).resolve().parents[1]
+    source_path = root / "core" / "routers" / "studio.py"
+    tree = ast.parse(source_path.read_text(encoding="utf-8"))
+    selected = [
+        node
+        for node in tree.body
+        if (
+            isinstance(node, (ast.Assign, ast.AnnAssign))
+            and any(
+                isinstance(target, ast.Name)
+                and target.id == "STUDIO_MIM_CHAT_PROMPT_MAX_LENGTH"
+                for target in ([node.target] if isinstance(node, ast.AnnAssign) else node.targets)
+            )
+        )
+        or (isinstance(node, ast.ClassDef) and node.name == "StudioMimChatRequest")
+    ]
+    module_ast = ast.parse("from typing import Any\nfrom pydantic import BaseModel, Field\n")
+    module_ast.body.extend(selected)
+    ast.fix_missing_locations(module_ast)
+    namespace = {}
+    exec(compile(module_ast, str(source_path), "exec"), namespace)
+    return namespace["StudioMimChatRequest"], namespace["STUDIO_MIM_CHAT_PROMPT_MAX_LENGTH"]
 
 
 def _import_studio_module():
@@ -229,6 +256,15 @@ def _import_purpose_module():
 
 
 class StudioTrainingChatTest(unittest.TestCase):
+    def test_studio_chat_accepts_long_objective_packets_with_a_bounded_limit(self):
+        request_model, max_length = _load_studio_chat_request_model()
+        packet = "Enterprise objective\n" + ("bounded outcome and acceptance evidence\n" * 145)
+
+        self.assertGreater(len(packet), 5_345)
+        self.assertEqual(request_model(prompt=packet).prompt, packet)
+        with self.assertRaises(ValidationError):
+            request_model(prompt="x" * (max_length + 1))
+
     def test_studio_chat_route_has_test_only_auth_harness(self):
         source = (Path(__file__).resolve().parents[1] / "core" / "routers" / "studio.py").read_text(
             encoding="utf-8"
@@ -345,6 +381,15 @@ class StudioTrainingChatTest(unittest.TestCase):
         self.assertIn("chatInput.addEventListener", html)
         self.assertIn('id="chatFileDrop" class="chat-file-drop" role="button" tabindex="0"', html)
         self.assertIn("Drop a file here, or attach text, code, JSON, markdown, or an image reference.", html)
+
+    def test_native_studio_mim_chat_surfaces_backend_validation_detail(self):
+        studio = _import_studio_module()
+
+        html = studio._studio_mim_body()
+
+        self.assertIn("const errorText = await response.text()", html)
+        self.assertIn("errorPayload.detail", html)
+        self.assertIn("Studio chat HTTP ' + response.status", html)
 
     def test_attention_prompt_gets_prioritized_action_reply(self):
         studio = _import_studio_module()

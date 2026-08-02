@@ -55,6 +55,11 @@ Describe 'Bridge status diagnostics' {
         @($payload.bridge_status.missing_artifacts).Count | Should BeGreaterThan -1
     }
 
+    It 'validates Test-TodUiReachable always returns Boolean' {
+        $result = Test-TodUiReachable
+        $result | Should BeOfType [bool]
+    }
+
     It 'returns bridge diagnostic evidence and citations in operator chat' {
         if (-not (Test-TodUiReachable)) {
             return

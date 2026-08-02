@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, func
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from core.db import Base
@@ -317,6 +317,33 @@ class Enterprise(Base, TimestampMixin):
     version: Mapped[int] = mapped_column(Integer, default=1)
     updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), onupdate=func.now(), nullable=True)
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+
+class EnterpriseMembership(Base, TimestampMixin):
+    __tablename__ = "enterprise_memberships"
+    __table_args__ = (
+        UniqueConstraint("enterprise_id", "email", name="uq_enterprise_membership_email"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    enterprise_id: Mapped[int] = mapped_column(
+        ForeignKey("enterprises.id", ondelete="CASCADE"), index=True
+    )
+    account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("project_portal_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    email: Mapped[str] = mapped_column(String(240), index=True)
+    role: Mapped[str] = mapped_column(String(40), default="member", index=True)
+    status: Mapped[str] = mapped_column(String(40), default="pending", index=True)
+    invite_token_hash: Mapped[str] = mapped_column(String(160), default="", index=True)
+    invited_by_account_id: Mapped[int | None] = mapped_column(
+        ForeignKey("project_portal_accounts.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    invited_by_email: Mapped[str] = mapped_column(String(240), default="")
+    invite_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    revoked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    metadata_json: Mapped[dict] = mapped_column(JSON, default=dict)
+
 
 class ProjectPortalAccount(Base, TimestampMixin):
     __tablename__ = "project_portal_accounts"

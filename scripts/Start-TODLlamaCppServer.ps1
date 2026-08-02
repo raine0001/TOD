@@ -1,7 +1,7 @@
 param(
     [string]$ConfigPath = "tod/config/llama-runtime.json",
     [string]$ModelPath,
-    [int]$Port,
+    [ValidateRange(1, 65535)][int]$Port,
     [switch]$Launch,
     [switch]$AsJson
 )

@@ -12,6 +12,8 @@
 - Task ID: {{TASK_ID}}
 - Task Title: {{TASK_TITLE}}
 - Task Type: {{TASK_TYPE}}
+- Task Category: {{TASK_CATEGORY}}
+- Task Description: {{TASK_DESCRIPTION}}
 - Scope: {{TASK_SCOPE}}
 - Dependencies: {{TASK_DEPENDENCIES}}
 - Acceptance Criteria: {{TASK_ACCEPTANCE_CRITERIA}}

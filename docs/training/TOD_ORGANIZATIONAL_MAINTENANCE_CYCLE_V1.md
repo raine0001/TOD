@@ -46,6 +46,21 @@ The old scorecards measured activity, movement, and specific behavior suites. Th
 - Execution Ownership
 - Borrowed Capability Reduction
 - Autonomous Recovery Rate
+- Model Utilization
+
+### TOD Engineering Intelligence Policy
+
+The borrowed-capability ratio must not hide where TOD is actually improving. Future scorecards should separate:
+
+- Engineering: inspect current code, diagnose, synthesize bounded changes, validate, recover.
+- Runtime: packets, selectors, artifact lanes, lineage, executor binding, service coordination.
+- Governance: authority boundaries, blocker honesty, no wrapper-only completion, escalation rules.
+- Evidence: inspected files, meaningful artifact writes, validation proof, prevention lessons.
+- Validation: focused tests, live-path checks, semantic acceptance, regression prevention.
+- Coordination: MIM/TOD handoff, active objective truth, operator-readable status.
+- Model Utilization: building model context, judging provider output, rejecting weak help, improving prompts, and recording engineering episodes.
+
+Engineering is the primary apprenticeship track. Runtime work is supporting infrastructure and should be repaired only far enough to let engineering demonstrations run. The Engineering Corpus is now the primary product for TOD learning: every meaningful engineering attempt should become a durable episode, and local model use should generate supervised engineering episodes rather than replace TOD ownership.
 
 ### Required Borrowed Capability Ratio
 

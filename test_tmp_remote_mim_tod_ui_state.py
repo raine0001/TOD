@@ -375,6 +375,43 @@ class TodUiStateClassificationTests(unittest.TestCase):
             blocked,
         )
 
+    def test_operator_workspace_prefers_human_narrative_over_raw_alerts(self) -> None:
+        state = {
+            "generated_at": "2026-04-26T10:00:00Z",
+            "execution": {
+                "available": True,
+                "updated_at": "2026-04-26T10:00:00Z",
+                "objective_id": "TOD-EXECUTOR-SELECTOR-AUTHORITY-PRECEDENCE-INDEPENDENT-DEMO-V1",
+                "task_id": "selector-precedence-demo",
+                "title": "Demonstrate executor selector precedence",
+                "activity_state": "blocked",
+                "activity_label": "Binding Required",
+                "current_action": "TOD inspected selector evidence and found that the wrong execution path is still winning.",
+                "wait_reason": "Executor binding is missing for the queued objective step.",
+                "next_step": "Materialize a local executor binding and rerun the focused selector-precedence validation.",
+                "validation_summary": "selector-precedence check failed because no local binding was published.",
+                "command_output": '#< CLIXML <Objs><Obj><S>System.Management.Automation.PSCustomObject</S></Obj></Objs>',
+            },
+            "training_status": {
+                "active": True,
+                "current_step": "Train TOD to explain current work from evidence before emitting raw alerts.",
+            },
+        }
+
+        truth = self.tod_ui._build_tod_status_truth_object(state)
+        state["tod_status_truth"] = truth
+        workspace = self.tod_ui._build_tod_operator_workspace(state)
+
+        narrative = workspace["narrative"]
+        self.assertGreaterEqual(len(narrative), 3)
+        self.assertEqual(narrative[0]["label"], "TOD is blocked")
+        self.assertIn("Executor binding is missing", narrative[0]["detail"])
+        self.assertTrue(any(item["label"] == "Next move" for item in narrative))
+        self.assertFalse(any("CLIXML" in str(item["detail"]) for item in narrative))
+        self.assertTrue(any("detailed evidence view" in str(item["detail"]) for item in narrative))
+        self.assertFalse(any(str(item["detail"]).startswith("Action:") for item in narrative))
+        self.assertTrue(workspace["timeline"])
+
     def test_normalize_execution_status_reports_implementation_gate_hold_before_hard_stall(self) -> None:
         fresh_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
         active_task = {
@@ -1037,6 +1074,10 @@ class TodUiStateClassificationTests(unittest.TestCase):
         self.assertIn("tod-message-row:last-child .tod-message-tools", source)
         self.assertIn("tod-message-bubble:hover .tod-message-tools", source)
         self.assertIn("Execution events stay in live activity", source)
+        self.assertIn("/studio/api/tod/live-feed", source)
+        self.assertIn("credentials:'same-origin'", source)
+        self.assertIn("studio-tod-live-feed-unavailable", source)
+        self.assertIn("raw execution alerts are being held out of the primary view", source)
         self.assertIn("tod-execution-banner{display:none", source)
         self.assertNotIn('id="todLifecycle"', source)
         self.assertNotIn("tod-phase-track", source)

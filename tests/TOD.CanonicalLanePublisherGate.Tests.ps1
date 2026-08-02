@@ -113,6 +113,8 @@ function New-StaleExecutionPayload {
 
 Describe 'TOD canonical lane publisher gate' {
     BeforeAll {
+        Import-TodFunction -Name 'Get-TaskExplicitFieldValue'
+
         Import-TodFunction -Name 'Resolve-TaskCategory'
         Import-TodFunction -Name 'Get-NormalizedObjectiveToken'
         Import-TodFunction -Name 'Get-TodObjectValue'
@@ -143,6 +145,7 @@ Describe 'TOD canonical lane publisher gate' {
         Import-TodFunction -Name 'Test-LocalExecutionPatchRequired'
         Import-TodFunction -Name 'Get-TodMaterialImplementationProofAssessment'
         Import-TodFunction -Name 'Get-LocalExecutionNoOpAssessment'
+        Import-TodFunction -Name 'Get-LocalExecutionRequiredValidationFailures'
         Import-TodFunction -Name 'Publish-LocalExecutionArtifacts'
 
         function global:Publish-RemoteTodExecutionArtifacts {

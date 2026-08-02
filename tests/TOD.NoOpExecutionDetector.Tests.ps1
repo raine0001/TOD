@@ -86,6 +86,7 @@ Describe 'TOD no-op execution detector' {
         Import-TodFunction -Name 'Resolve-LocalExecutionTaskClass'
         Import-TodFunction -Name 'Test-LocalExecutionPatchRequired'
         Import-TodFunction -Name 'Get-LocalExecutionNoOpAssessment'
+        Import-TodFunction -Name 'Get-LocalExecutionRequiredValidationFailures'
         Import-TodFunction -Name 'Test-TodWrapperOnlyChangedPath'
         Import-TodFunction -Name 'Get-TodMaterialImplementationProofAssessment'
         Import-TodFunction -Name 'Publish-LocalExecutionArtifacts'

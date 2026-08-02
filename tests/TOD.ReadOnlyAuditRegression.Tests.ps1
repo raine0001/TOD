@@ -365,10 +365,10 @@ Read-only assessment. No source code changes.
             title = 'Fresh route patch evidence registration'
             scope = $promptText
             prompt_path = $promptPath
-            task_category = 'chat_execution'
+            task_category = 'route_patch_evidence_registration'
             allowed_files = @()
             validation_commands = @()
-            metadata = @{ task_category = 'chat_execution'; task_type = 'read_only_assessment' }
+            metadata = @{ task_category = 'route_patch_evidence_registration'; task_type = 'read_only_assessment' }
         }
 
         $createdPatch = $null
@@ -403,6 +403,112 @@ Read-only assessment. No source code changes.
             if ($createdArtifact) {
                 Remove-Item -Path (Join-Path $repoRoot ([string]$createdArtifact -replace '/', [System.IO.Path]::DirectorySeparatorChar)) -Force -ErrorAction SilentlyContinue
             }
+        }
+    }
+
+    It 'does not let inherited read-only wording override the current task category' {
+        $context = [pscustomobject]@{
+            task_id = 'TSK-SAVED-ROUTE-DIAGNOSTIC-PRECEDENCE'
+            objective_id = 'OBJ-SAVED-ROUTE-DIAGNOSTIC-PRECEDENCE'
+            title = 'Constrain saved route evidence discovery to explicit discovery intent'
+            scope = @'
+Inspect scripts/engines/LocalExecutionEngine.ps1 and diagnose why a prior task selected
+runtime_remote_training/cleanup_holds/route-authority.patch. The parent objective used
+read-only inspection wording, but this runtime implementation task must remain in its
+declared source lane. Inspect the saved route classifier and publish proof.
+'@
+            prompt_path = ''
+            task_category = 'runtime'
+            metadata = @{ task_category = 'runtime' }
+        }
+
+        Test-LocalExecutionSavedRoutePatchEvidenceDiscoveryTask -Context $context | Should Be $false
+    }
+
+    It 'discovers saved route authority evidence without an explicit input patch' {
+        $taskId = ('TSK-ROUTE-AUTHORITY-DISCOVERY-{0}' -f [guid]::NewGuid().ToString('N').Substring(0, 8))
+        $promptText = @"
+Read-only authority classification independent discovery.
+Mission: discover one suitable saved route/authority experiment evidence item from the existing training evidence area, inspect it without modifying source code, classify the authority risks and reusable process-support candidates, publish a read-only proof artifact, and recommend which borrowed apprenticeship entries can move forward.
+Do not require target_file.
+Do not require bounded_edit_mode.
+Do not edit product source.
+Do not rely on wrapper-only completion.
+"@
+        $promptPath = New-TestPromptFile -Content $promptText
+        $originalLocalRoot = $script:LocalEngineRepoRoot
+        $tempRoot = Join-Path $repoRoot ('tod/out/tests/read-only-saved-route-discovery-' + [guid]::NewGuid().ToString('N'))
+        $cleanupHolds = Join-Path $tempRoot 'runtime_remote_training/cleanup_holds'
+        New-Item -ItemType Directory -Path $cleanupHolds -Force | Out-Null
+
+        $lowSignalPatchRel = 'runtime_remote_training/cleanup_holds/low-signal-route.patch'
+        $signalPatchRel = 'runtime_remote_training/cleanup_holds/signal-rich-route-authority.patch'
+        $lowSignalPatchPath = Join-Path $tempRoot ($lowSignalPatchRel -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        $signalPatchPath = Join-Path $tempRoot ($signalPatchRel -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        $lowSignalPatch = @"
+diff --git a/tmp_remote_mim/core/routers/studio.py b/tmp_remote_mim/core/routers/studio.py
+index 1111111..2222222 100644
+--- a/tmp_remote_mim/core/routers/studio.py
++++ b/tmp_remote_mim/core/routers/studio.py
+@@ -10,3 +10,3 @@
+-old = True
++old = False
+"@
+        $signalPatch = @"
+diff --git a/tmp_remote_mim/core/routers/studio.py b/tmp_remote_mim/core/routers/studio.py
+index 3333333..4444444 100644
+--- a/tmp_remote_mim/core/routers/studio.py
++++ b/tmp_remote_mim/core/routers/studio.py
+@@ -20,6 +20,12 @@
++reply = "Recommended action: inspect response authority. Expected evidence: final_authority trace. Dave needed: no."
++authority = {"final_authority": "cognitive_composer", "operator_contract_allowed": False}
++relationship = {"subject": "MIM", "relationship_type": "conversation_state", "object": "active conversation"}
++fallback = "My first working hypothesis is that no specialized handler exists."
++note = "If Codex disappeared completely, TOD should classify the blocker instead of phrase-patching."
++operator_contract = "Aging rule: rerun after validation."
+"@
+        [System.IO.File]::WriteAllText($lowSignalPatchPath, $lowSignalPatch, (New-Object System.Text.UTF8Encoding($false)))
+        [System.IO.File]::WriteAllText($signalPatchPath, $signalPatch, (New-Object System.Text.UTF8Encoding($false)))
+
+        $context = [pscustomobject]@{
+            task_id = $taskId
+            objective_id = 'TOD-READONLY-AUTHORITY-INDEPENDENT-DISCOVERY-V1'
+            title = 'Read-only authority independent discovery proof V1'
+            scope = $promptText
+            prompt_path = $promptPath
+            task_category = 'route_patch_evidence_discovery'
+            allowed_files = @()
+            validation_commands = @()
+            metadata = @{ task_category = 'route_patch_evidence_discovery'; task_type = 'read_only_assessment' }
+        }
+
+        $createdArtifact = $null
+        try {
+            $script:LocalEngineRepoRoot = $tempRoot
+            $result = Invoke-LocalExecutionEngine -Context $context
+            [string]$result.status | Should Be 'completed'
+
+            $createdArtifact = @($result.files_changed | Where-Object { [string]$_ -match '^runtime_remote_training/read_only_audit_artifacts/.+\.json$' })[0]
+            [string]$createdArtifact | Should Not BeNullOrEmpty
+            @($result.files_changed | Where-Object { [string]$_ -match '^runtime_remote_training/cleanup_holds/.+\.patch$' }).Count | Should Be 0
+
+            $artifactPath = Join-Path $tempRoot ([string]$createdArtifact -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+            Test-Path -Path $artifactPath -PathType Leaf | Should Be $true
+
+            $artifact = Get-Content -Path $artifactPath -Raw | ConvertFrom-Json
+            [string]$artifact.artifact_type | Should Be 'tod_patch_evidence_authority_classification'
+            [bool]$artifact.no_code_changes | Should Be $true
+            [int]$artifact.patch_summary.route_file_count | Should BeGreaterThan 0
+            [string]$artifact.input_patch | Should Be $signalPatchRel
+            @($artifact.signals).Count | Should BeGreaterThan 0
+            [int]$artifact.classification_counts.hardcoded_response_authority_risk | Should BeGreaterThan 0
+            @($result.commands_run) -contains 'Select-SavedRoutePatchEvidenceFromTrainingArea' | Should Be $true
+            @($result.commands_run) -contains 'Register-FreshRoutePatchEvidenceFromGitHistory' | Should Be $false
+        }
+        finally {
+            $script:LocalEngineRepoRoot = $originalLocalRoot
+            Remove-Item -Path (Split-Path -Parent $promptPath) -Recurse -Force -ErrorAction SilentlyContinue
+            Remove-Item -Path $tempRoot -Recurse -Force -ErrorAction SilentlyContinue
         }
     }
 }

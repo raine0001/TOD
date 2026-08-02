@@ -6217,11 +6217,38 @@ function Resolve-TaskCategory {
         ) -join ' ').ToLowerInvariant()
     }
 
+    $explicitCategoryValue = ''
     if ($Task -and $Task.PSObject.Properties["task_category"] -and -not [string]::IsNullOrWhiteSpace([string]$Task.task_category)) {
-        $explicitCategory = ([string]$Task.task_category).ToLowerInvariant()
+        $explicitCategoryValue = [string]$Task.task_category
+    }
+    elseif (
+        $Task -and
+        $Task.PSObject.Properties['metadata_json'] -and
+        $null -ne $Task.metadata_json -and
+        $Task.metadata_json.PSObject.Properties['task_category'] -and
+        -not [string]::IsNullOrWhiteSpace([string]$Task.metadata_json.task_category)
+    ) {
+        $explicitCategoryValue = [string]$Task.metadata_json.task_category
+    }
+    elseif (
+        $Task -and
+        $Task.PSObject.Properties['metadata'] -and
+        $null -ne $Task.metadata -and
+        $Task.metadata.PSObject.Properties['task_category'] -and
+        -not [string]::IsNullOrWhiteSpace([string]$Task.metadata.task_category)
+    ) {
+        $explicitCategoryValue = [string]$Task.metadata.task_category
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($explicitCategoryValue)) {
+        $explicitCategory = ([string]$explicitCategoryValue).ToLowerInvariant()
         if ($explicitCategory -in @('read_only_assessment', 'read_only_audit', 'capability_assessment', 'assessment')) {
             return 'read_only_assessment'
         }
+        $hasExplicitBoundedEditDirective = (
+            (Test-ExplicitBooleanTrue -Value (Get-TaskExplicitFieldValue -Task $Task -Names @('bounded_edit_mode', 'boundedEditMode'))) -or
+            $blob -match '(?im)^\s*(target\s+file|edit\s+mode|old\s+text|new\s+text|anchor_or_old_text|new_text_or_snippet)\s*:'
+        )
         $readOnlySignals = (
             $blob -match '(?is)\bread[-\s]?only\b' -or
             $blob -match '(?is)\bno\s+source\s+edits?\b' -or
@@ -6229,13 +6256,23 @@ function Resolve-TaskCategory {
             $blob -match '(?is)\btask\s+class\s*:\s*report_only\b' -or
             $blob -match '(?is)\bartifact\s+publication\b'
         )
-        if ($explicitCategory -eq 'code_change' -and $readOnlySignals) {
+        if ($explicitCategory -eq 'code_change' -and $readOnlySignals -and -not $hasExplicitBoundedEditDirective) {
             return 'report_only'
+        }
+        if (
+            $blob -match '(?is)\bapply[_ -]?packet[_ -]?artifact\b|\bpacket[_ -]?artifact[_ -]?apply\b|\bapply[- ]from[- ]packet\b' -and
+            $blob -match '(?im)^\s*(input artifact|packet artifact)\s*:'
+        ) {
+            return 'apply_packet_artifact'
         }
         return $explicitCategory
     }
 
     if ($blob -match '(?is)\bread[-_\s]?only[-_\s]?assessment\b|\bcapability\s+assessment\b') { return "read_only_assessment" }
+    if (
+        $blob -match '(?is)\bapply[_ -]?packet[_ -]?artifact\b|\bpacket[_ -]?artifact[_ -]?apply\b|\bapply[- ]from[- ]packet\b' -and
+        $blob -match '(?im)^\s*(input artifact|packet artifact)\s*:'
+    ) { return "apply_packet_artifact" }
     if ($blob -match '(?is)\btarget[-_\s]?selection\b|\bselect(?:ing)?\s+(?:one\s+)?(?:fresh\s+)?target\b|\bchoose\s+(?:one\s+)?(?:fresh\s+)?target\b|\bidentify\s+(?:one\s+)?(?:fresh\s+)?target\b') { return "target_selection" }
     if ($blob -match '(?is)\btask\s+class\s*:\s*report_only\b|\breport[-_\s]?only\b') { return "report_only" }
     if ($blob -match 'repo index|index-repo|indexing') { return "repo_index" }
@@ -6265,6 +6302,36 @@ function Resolve-TodTaskMode {
         ) -join ' ').ToLowerInvariant()
     }
 
+    $explicitValues = New-Object System.Collections.Generic.List[string]
+    foreach ($fieldName in @('task_mode', 'task_class', 'task_category', 'type')) {
+        if ($Task -and $Task.PSObject.Properties[$fieldName] -and -not [string]::IsNullOrWhiteSpace([string]$Task.$fieldName)) {
+            $explicitValue = ([string]$Task.$fieldName).Trim().ToLowerInvariant()
+            if ($fieldName -eq 'type' -and $explicitValue -eq 'implementation') {
+                continue
+            }
+            [void]$explicitValues.Add($explicitValue)
+        }
+    }
+
+    foreach ($value in @($explicitValues.ToArray())) {
+        if ($value -in @('read_only_assessment', 'read_only_audit', 'capability_assessment', 'assessment', 'report_only', 'review_only')) {
+            return 'read_only_assessment'
+        }
+    }
+
+    foreach ($value in @($explicitValues.ToArray())) {
+        switch ($value) {
+            { $_ -in @('read_only_assessment', 'read_only_audit', 'capability_assessment', 'assessment', 'report_only', 'review_only') } { return 'read_only_assessment' }
+            { $_ -in @('inspection', 'inspection_only', 'diagnostic_only', 'inventory_only', 'source_anchor_observation', 'read_only_role_classification') } { return 'inspection' }
+            { $_ -in @('target_selection', 'target-selection', 'target_discovery', 'target-discovery') } { return 'target_selection' }
+            { $_ -in @('validation', 'validation_only', 'verify', 'verification') } { return 'validation' }
+            { $_ -in @('recovery', 'repair', 'diagnostic_implementation_repair', 'blocked-result-closure-diagnostic') } { return 'recovery' }
+            { $_ -in @('escalation', 'operator_admin_repair') } { return 'escalation' }
+            { $_ -in @('apply_packet_artifact', 'packet_artifact_apply') } { return 'apply_packet_artifact' }
+            { $_ -in @('implementation', 'code_change', 'chat_execution', 'bridge_runtime', 'packet_formation') } { return 'implementation' }
+        }
+    }
+
     $hasTargetSelectionSignal = (
         $blob -match '(?is)\btarget[-_\s]?selection\b' -or
         $blob -match '(?is)\bselect(?:ing)?\s+(?:one\s+)?(?:fresh\s+)?target\b' -or
@@ -6279,33 +6346,12 @@ function Resolve-TodTaskMode {
         return 'target_selection'
     }
 
-    $explicitValues = New-Object System.Collections.Generic.List[string]
-    foreach ($fieldName in @('task_mode', 'task_class', 'task_category', 'type')) {
-        if ($Task -and $Task.PSObject.Properties[$fieldName] -and -not [string]::IsNullOrWhiteSpace([string]$Task.$fieldName)) {
-            [void]$explicitValues.Add(([string]$Task.$fieldName).Trim().ToLowerInvariant())
-        }
-    }
-
-    foreach ($value in @($explicitValues.ToArray())) {
-        if ($value -in @('read_only_assessment', 'read_only_audit', 'capability_assessment', 'assessment', 'report_only', 'review_only')) {
-            return 'read_only_assessment'
-        }
-    }
-
-    foreach ($value in @($explicitValues.ToArray())) {
-        switch ($value) {
-            { $_ -in @('read_only_assessment', 'read_only_audit', 'capability_assessment', 'assessment', 'report_only', 'review_only') } { return 'read_only_assessment' }
-            { $_ -in @('inspection', 'inspection_only', 'diagnostic_only', 'inventory_only', 'source_anchor_observation') } { return 'inspection' }
-            { $_ -in @('target_selection', 'target-selection', 'target_discovery', 'target-discovery') } { return 'target_selection' }
-            { $_ -in @('validation', 'validation_only', 'verify', 'verification') } { return 'validation' }
-            { $_ -in @('recovery', 'repair', 'diagnostic_implementation_repair', 'blocked-result-closure-diagnostic') } { return 'recovery' }
-            { $_ -in @('escalation', 'operator_admin_repair') } { return 'escalation' }
-            { $_ -in @('implementation', 'code_change', 'chat_execution', 'bridge_runtime', 'packet_formation') } { return 'implementation' }
-        }
-    }
-
     if ($blob -match '(?is)\bread[-_\s]?only[-_\s]?assessment\b|\bcapability\s+assessment\b') { return 'read_only_assessment' }
     if (($blob -match '(?is)\bread[-\s]?only\b|\bno\s+source\s+code\s+modified\b|\bno\s+code\s+changes?\b') -and ($blob -match '(?is)\bassessment\b|\baudit\b|\breport\b')) { return 'read_only_assessment' }
+    if (
+        $blob -match '(?is)\bapply[_ -]?packet[_ -]?artifact\b|\bpacket[_ -]?artifact[_ -]?apply\b|\bapply[- ]from[- ]packet\b' -and
+        $blob -match '(?im)^\s*(input artifact|packet artifact)\s*:'
+    ) { return 'apply_packet_artifact' }
     if ($blob -match '(?is)\btarget[-_\s]?selection\b|\bselect(?:ing)?\s+(?:one\s+)?(?:fresh\s+)?target\b|\bchoose\s+(?:one\s+)?(?:fresh\s+)?target\b|\bidentify\s+(?:one\s+)?(?:fresh\s+)?target\b') { return 'target_selection' }
     if ($blob -match '(?is)\binspect\b|\binspection\b|\bscan\b|\blocate\b|\bfind\b|\breview evidence\b') { return 'inspection' }
     if ($blob -match '(?is)\bvalidate\b|\bvalidation\b|\bverify\b|\bverification\b|\bsmoke\b|\bregression\b') { return 'validation' }
@@ -6459,11 +6505,11 @@ function Get-BoundedEditDirectiveValue {
         'Validation Command',
         'Closure Evidence',
         'Prevention Lesson',
-        'Packet Source',
-        'Packet Source Target',
         'Dave Needed',
         'Required Packet Fields',
         'Inspect Target File',
+        'Packet Source',
+        'Packet Source Target',
         'Anchor',
         'Snippet',
         'Section Title',
@@ -6557,6 +6603,64 @@ function Get-BoundedEditSourceFileText {
     }
 
     return [string](Get-Content -Path $absolutePath -Raw -ErrorAction Stop)
+}
+
+function Get-SourceAnchorPacketTargetFileHint {
+    param([AllowEmptyString()][string]$Text)
+
+    $artifactCandidates = New-Object System.Collections.Generic.List[string]
+    foreach ($fieldName in @('Input Artifact', 'Packet Source', 'Packet Artifact', 'Source Anchor Artifact')) {
+        $candidate = Get-BoundedEditDirectiveValue -Text ([string]$Text) -FieldName $fieldName
+        if (-not [string]::IsNullOrWhiteSpace($candidate)) {
+            $artifactCandidates.Add((([string]$candidate).Trim() -replace '[\\/]+', '/')) | Out-Null
+        }
+    }
+
+    foreach ($match in [regex]::Matches([string]$Text, '(?im)(?:^|[\s''""`(\[])(runtime_remote_training/(?:read_only_audit_artifacts|cleanup_holds)/[A-Za-z0-9_./\\-]+\.json)(?=$|[\s''""`,:;\!\?\)\]])')) {
+        if ($match.Groups.Count -gt 1) {
+            $artifactCandidates.Add((([string]$match.Groups[1].Value).Trim() -replace '[\\/]+', '/')) | Out-Null
+        }
+    }
+
+    $sourceTargets = New-Object System.Collections.Generic.List[string]
+    foreach ($candidate in @($artifactCandidates | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)) {
+        $normalized = ([string]$candidate).Trim().TrimStart('.').TrimStart('/') -replace '[\\/]+', '/'
+        if (
+            -not (
+                $normalized.StartsWith('runtime_remote_training/read_only_audit_artifacts/', [System.StringComparison]::OrdinalIgnoreCase) -or
+                $normalized.StartsWith('runtime_remote_training/cleanup_holds/', [System.StringComparison]::OrdinalIgnoreCase)
+            )
+        ) {
+            continue
+        }
+
+        $artifactPath = Join-Path $repoRoot ($normalized -replace '/', [System.IO.Path]::DirectorySeparatorChar)
+        if (-not (Test-Path -Path $artifactPath -PathType Leaf)) {
+            continue
+        }
+
+        try {
+            $artifact = Get-Content -Path $artifactPath -Raw -ErrorAction Stop | ConvertFrom-Json
+            if (
+                $artifact -and
+                $artifact.PSObject.Properties['artifact_type'] -and
+                [string]::Equals([string]$artifact.artifact_type, 'tod_source_anchor_observation', [System.StringComparison]::OrdinalIgnoreCase) -and
+                $artifact.PSObject.Properties['source_file'] -and
+                (-not [string]::IsNullOrWhiteSpace([string]$artifact.source_file))
+            ) {
+                $sourceTargets.Add((([string]$artifact.source_file).Trim().TrimStart('.').TrimStart('/') -replace '[\\/]+', '/')) | Out-Null
+            }
+        }
+        catch {
+        }
+    }
+
+    $sourceTargets = @($sourceTargets | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) } | Select-Object -Unique)
+    if (@($sourceTargets).Count -eq 1) {
+        return [string]$sourceTargets[0]
+    }
+
+    return ''
 }
 
 function Get-BoundedEditSectionTitle {
@@ -7240,6 +7344,168 @@ function Resolve-TaskBoundedEditMaterialization {
     }
 
     $taskCategory = Resolve-TaskCategory -Task $Task
+    $taskMode = Resolve-TodTaskMode -Task $Task
+    $materializationRequiredArtifactType = Get-BoundedEditDirectiveValue -Text $taskTextForMaterialization -FieldName 'Required Artifact Type'
+    if ([string]::IsNullOrWhiteSpace($materializationRequiredArtifactType)) {
+        $materializationRequiredArtifactTypeMatch = [regex]::Match($taskTextForMaterialization, '(?i)\bRequired\s+Artifact\s+Type\s*:\s*(?<value>[A-Za-z0-9_.-]+)')
+        if ($materializationRequiredArtifactTypeMatch.Success) {
+            $materializationRequiredArtifactType = ([string]$materializationRequiredArtifactTypeMatch.Groups['value'].Value).Trim()
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($materializationRequiredArtifactType)) {
+        $producesArtifactTypeMatch = [regex]::Match($taskTextForMaterialization, '(?i)\bProduces\s+(?<value>tod_[A-Za-z0-9_.-]+)\b')
+        if ($producesArtifactTypeMatch.Success) {
+            $materializationRequiredArtifactType = ([string]$producesArtifactTypeMatch.Groups['value'].Value).Trim()
+        }
+    }
+    if (-not [string]::IsNullOrWhiteSpace($materializationRequiredArtifactType)) {
+        $materializationRequiredArtifactTypeToken = [regex]::Match($materializationRequiredArtifactType, '[A-Za-z0-9_.-]+')
+        if ($materializationRequiredArtifactTypeToken.Success) {
+            $materializationRequiredArtifactType = (([string]$materializationRequiredArtifactTypeToken.Value).Trim()).TrimEnd('.', ';', ',', ':')
+        }
+    }
+    $artifactWriteSupportedTypes = @(
+        'tod_engineering_episode_card',
+        'tod_engineering_episode_quality_examiner_verdict',
+        'tod_engineering_context_package',
+        'tod_model_utilization_engineering_judgment',
+        'tod_engineering_provider_request',
+        'tod_local_engineering_provider_inventory',
+        'tod_engineering_provider_candidate_stub',
+        'tod_engineering_provider_candidate_invocation',
+        'tod_engineering_provider_candidate_verdict',
+        'tod_engineering_provider_candidate_replan',
+        'tod_engineering_corpus_foundation_index',
+        'tod_autonomous_meaningful_newtext_synthesis',
+        'tod_source_anchor_delta_proposal',
+        'tod_readonly_evidence_comparison',
+        'tod_read_only_evidence_comparison'
+    )
+    if (
+        [string]::Equals([string]$taskCategory, 'artifact_write', [System.StringComparison]::OrdinalIgnoreCase) -and
+        ($artifactWriteSupportedTypes -contains ([string]$materializationRequiredArtifactType))
+    ) {
+        $taskIdValue = ''
+        if ($Task.PSObject.Properties['id']) {
+            $taskIdValue = [string]$Task.id
+        }
+        return [pscustomobject]@{
+            status = 'not_required'
+            blocked = $false
+            reason_code = 'supported_read_only_artifact_write_contract_valid'
+            task_category = [string]$taskCategory
+            task_mode = [string]$taskMode
+            task_id = $taskIdValue
+            target_file_required = $false
+            edit_mode = 'artifact_write'
+            required_artifact_type = [string]$materializationRequiredArtifactType
+            target_file_candidates = @()
+            required_clarification = @()
+            why_local_executor_can_proceed = 'Supported read-only artifact-write tasks use labeled input/output artifacts and do not require a source target_file.'
+            prompt_directives = [ordered]@{}
+        }
+    }
+    $explicitSourceAnchorPacketFiles = @()
+    foreach ($explicitPacketFiles in @(
+            (Get-TaskExplicitFieldValue -Task $Task -Names @('target_files', 'targetFiles')),
+            (Get-TaskExplicitFieldValue -Task $Task -Names @('likely_target_files', 'likelyTargetFiles')),
+            (Get-TaskExplicitFieldValue -Task $Task -Names @('allowed_files', 'allowedFiles')),
+            (Get-TaskExplicitFieldValue -Task $Task -Names @('files_involved', 'filesInvolved'))
+        )) {
+        if ($null -eq $explicitPacketFiles) {
+            continue
+        }
+        foreach ($packetFile in @($explicitPacketFiles)) {
+            $packetFileValue = ([string]$packetFile).Trim() -replace '[\\/]+', '/'
+            if ([string]::IsNullOrWhiteSpace($packetFileValue)) {
+                continue
+            }
+            $isEvidenceArtifact = (
+                ($packetFileValue.StartsWith('runtime_remote_training/read_only_audit_artifacts/', [System.StringComparison]::OrdinalIgnoreCase) -and $packetFileValue.EndsWith('.json', [System.StringComparison]::OrdinalIgnoreCase)) -or
+                ($packetFileValue.StartsWith('runtime_remote_training/tod_independent_resolution_attempts/', [System.StringComparison]::OrdinalIgnoreCase) -and $packetFileValue.EndsWith('.json', [System.StringComparison]::OrdinalIgnoreCase))
+            )
+            if (-not $isEvidenceArtifact) {
+                $explicitSourceAnchorPacketFiles += $packetFileValue
+            }
+        }
+    }
+    $sourceAnchorPacketDirectiveTask = (
+        [string]::Equals([string]$taskCategory, 'packet_formation', [System.StringComparison]::OrdinalIgnoreCase) -and
+        $taskTextForMaterialization -match '(?i)source[-_\s]?anchor\s+packet[-_\s]?directive|packet[-_\s]?directive\s+materialization|directive[-_\s]?materialization\s+packet' -and
+        $taskTextForMaterialization -match '(?im)^\s*Input Artifact\s*:\s*runtime_remote_training/read_only_audit_artifacts/[A-Za-z0-9_./-]+?\.json\s*$' -and
+        $taskTextForMaterialization -match '(?im)^\s*Output Artifact\s*:\s*runtime_remote_training/tod_independent_resolution_attempts/[A-Za-z0-9_./-]+?\.json\s*$' -and
+        @($explicitSourceAnchorPacketFiles | Select-Object -Unique).Count -eq 0
+    )
+    if ($sourceAnchorPacketDirectiveTask) {
+        $taskIdValue = ''
+        if ($Task.PSObject.Properties['id']) {
+            $taskIdValue = [string]$Task.id
+        }
+        return [pscustomobject]@{
+            status = 'not_required'
+            blocked = $false
+            reason_code = 'source_anchor_packet_directive_materialization_valid'
+            task_category = [string]$taskCategory
+            task_mode = [string]$taskMode
+            task_id = $taskIdValue
+            target_file_required = $false
+            edit_mode = 'source_anchor_packet_directive'
+            target_file_candidates = @()
+            required_clarification = @()
+            why_local_executor_can_proceed = 'Source-anchor packet directive tasks let LocalExecutionEngine derive the bounded target from the source-anchor artifact instead of treating input/output artifacts as edit targets.'
+            prompt_directives = [ordered]@{}
+        }
+    }
+    $packetBodySynthesisTask = (
+        (
+            [string]::Equals([string]$taskCategory, 'packet_formation', [System.StringComparison]::OrdinalIgnoreCase) -or
+            $taskTextForMaterialization -match '(?im)^\s*Mode\s*:\s*packet_body_synthesis\s*$'
+        ) -and
+        $taskTextForMaterialization -match '(?i)packet[-_\s]?body\s+synthesis|packet_body_synthesis|bounded\s+new\s+text|new_text\s+artifact\s+body' -and
+        $taskTextForMaterialization -match '(?im)^\s*Input Artifact\s*:\s*runtime_remote_training/read_only_audit_artifacts/[A-Za-z0-9_./-]+?\.json\s*$' -and
+        $taskTextForMaterialization -match '(?im)^\s*Output Artifact\s*:\s*runtime_remote_training/tod_independent_resolution_attempts/[A-Za-z0-9_./-]+?\.json\s*$'
+    )
+    if ($packetBodySynthesisTask) {
+        $taskIdValue = ''
+        if ($Task.PSObject.Properties['id']) {
+            $taskIdValue = [string]$Task.id
+        }
+        return [pscustomobject]@{
+            status = 'not_required'
+            blocked = $false
+            reason_code = 'packet_body_synthesis_materialization_valid'
+            task_category = [string]$taskCategory
+            task_mode = [string]$taskMode
+            task_id = $taskIdValue
+            target_file_required = $false
+            edit_mode = 'packet_body_synthesis'
+            target_file_candidates = @()
+            required_clarification = @()
+            why_local_executor_can_proceed = 'Packet-body synthesis tasks let LocalExecutionEngine read the source-anchor artifact and output a packet candidate; prompt-level bounded edit materialization would contaminate New Text authority.'
+            prompt_directives = [ordered]@{}
+        }
+    }
+    $readOnlyMaterializationModes = @('read_only_assessment', 'inspection', 'target_selection')
+    if ($readOnlyMaterializationModes -contains ([string]$taskMode).ToLowerInvariant()) {
+        $taskIdValue = ''
+        if ($Task.PSObject.Properties['id']) {
+            $taskIdValue = [string]$Task.id
+        }
+        return [pscustomobject]@{
+            status = 'not_required'
+            blocked = $false
+            reason_code = 'canonical_read_only_task_mode_valid'
+            task_category = [string]$taskCategory
+            task_mode = [string]$taskMode
+            task_id = $taskIdValue
+            target_file_required = $false
+            edit_mode = 'read_only'
+            target_file_candidates = @()
+            required_clarification = @()
+            why_local_executor_can_proceed = 'Read-only TOD task modes do not require bounded edit materialization or a target_file.'
+            prompt_directives = [ordered]@{}
+        }
+    }
     $text = $taskTextForMaterialization
     $structuredFileHints = New-Object System.Collections.Generic.List[string]
     $directiveTargetFile = Get-BoundedEditDirectiveValue -Text $text -FieldName 'Target File'
@@ -7280,6 +7546,17 @@ function Resolve-TaskBoundedEditMaterialization {
         }
     }
     $fileHints = @(Get-CanonicalBoundedTargetFileHints -FileHints @($fileHints))
+    if ([string]::Equals([string]$taskCategory, 'packet_formation', [System.StringComparison]::OrdinalIgnoreCase) -and @($fileHints).Count -gt 1) {
+        $sourceAnchorPacketTarget = Get-SourceAnchorPacketTargetFileHint -Text $text
+        if (-not [string]::IsNullOrWhiteSpace($sourceAnchorPacketTarget)) {
+            $matchingSourceAnchorTarget = @($fileHints | Where-Object {
+                    [string]::Equals(([string]$_), $sourceAnchorPacketTarget, [System.StringComparison]::OrdinalIgnoreCase)
+                } | Select-Object -First 1)
+            if (@($matchingSourceAnchorTarget).Count -eq 1) {
+                $fileHints = @([string]$matchingSourceAnchorTarget[0])
+            }
+        }
+    }
     if ([string]::Equals([string]$taskCategory, 'packet_formation', [System.StringComparison]::OrdinalIgnoreCase) -and @($fileHints).Count -gt 1) {
         $packetSourceTarget = Get-BoundedEditDirectiveValue -Text $text -FieldName 'Packet Source Target'
         if (-not [string]::IsNullOrWhiteSpace($packetSourceTarget)) {
@@ -7403,9 +7680,10 @@ function Resolve-TaskBoundedEditMaterialization {
     $jsonField = Get-BoundedEditDirectiveValue -Text $text -FieldName 'Json Field'
     $jsonValue = Get-BoundedEditDirectiveValue -Text $text -FieldName 'Json Value'
     $lowerText = ([string]$text).ToLowerInvariant()
-    $materialImplementationTaskCategories = @('chat_execution', 'diagnostic_implementation_repair', 'implementation')
+    $incomingTaskCategoryLower = ([string]$taskCategory).ToLowerInvariant()
+    $materialImplementationTaskCategories = @('chat_execution', 'diagnostic_implementation_repair', 'implementation', 'mim_synced')
     if (
-        (([string]$taskCategory).ToLowerInvariant() -in $materialImplementationTaskCategories) -and
+        ($incomingTaskCategoryLower -in $materialImplementationTaskCategories) -and
         $explicitBoundedEditModeForMaterialization -and
         (-not $explicitValidationOnlyForMaterialization) -and
         $textLooksLikeMaterialImplementation
@@ -7430,7 +7708,8 @@ function Resolve-TaskBoundedEditMaterialization {
     }
     $hasExplicitValidationSignal = (
         (-not [string]::IsNullOrWhiteSpace($validationCommand)) -or
-        ($lowerText -match 'validation\s*/\s*check|validation\s+check|validation\s+command|validation\s*:|validation/check')
+        ($lowerText -match 'validation\s*/\s*check|validation\s+check|validation\s+command|validation\s*:|validation/check') -or
+        ($incomingTaskCategoryLower -eq 'mim_synced' -and -not [string]::IsNullOrWhiteSpace($inferredValidationCommand))
     )
     $looksLikeBehaviorChangingImplementationRequest = (
         ([string]$taskCategory).ToLowerInvariant() -eq 'code_change' -and
@@ -7777,6 +8056,21 @@ function Convert-BoundedEditMaterializationToPromptBlock {
             }
         }
     }
+    elseif ($Materialization.PSObject.Properties['status'] -and [string]::Equals([string]$Materialization.status, 'not_required', [System.StringComparison]::OrdinalIgnoreCase)) {
+        $lines.Add('Materialization Status: not_required') | Out-Null
+        if ($Materialization.PSObject.Properties['reason_code'] -and -not [string]::IsNullOrWhiteSpace([string]$Materialization.reason_code)) {
+            $lines.Add(('Reason Code: {0}' -f [string]$Materialization.reason_code)) | Out-Null
+        }
+        if ($Materialization.PSObject.Properties['task_mode'] -and -not [string]::IsNullOrWhiteSpace([string]$Materialization.task_mode)) {
+            $lines.Add(('Task Mode: {0}' -f [string]$Materialization.task_mode)) | Out-Null
+        }
+        if ($Materialization.PSObject.Properties['edit_mode'] -and -not [string]::IsNullOrWhiteSpace([string]$Materialization.edit_mode)) {
+            $lines.Add(('Edit Mode: {0}' -f [string]$Materialization.edit_mode)) | Out-Null
+        }
+        if ($Materialization.PSObject.Properties['why_local_executor_can_proceed'] -and -not [string]::IsNullOrWhiteSpace([string]$Materialization.why_local_executor_can_proceed)) {
+            $lines.Add(('Why Local Executor Can Proceed: {0}' -f [string]$Materialization.why_local_executor_can_proceed)) | Out-Null
+        }
+    }
     else {
         $lines.Add('Materialization Status: blocked_missing_bounded_edit_mode') | Out-Null
         if ($Materialization.PSObject.Properties['target_file_candidates'] -and $null -ne $Materialization.target_file_candidates -and @($Materialization.target_file_candidates).Count -gt 0) {
@@ -7933,24 +8227,75 @@ function Test-TaskAllowsLocalExecutionWithoutMaterialization {
     if ($materializationStatus -eq 'materialized') {
         return $false
     }
+    $materializationReasonCode = if ($null -ne $TaskMaterialization -and $TaskMaterialization.PSObject.Properties['reason_code']) {
+        ([string]$TaskMaterialization.reason_code).ToLowerInvariant()
+    }
+    else {
+        ''
+    }
+    $materializationEditMode = if ($null -ne $TaskMaterialization -and $TaskMaterialization.PSObject.Properties['edit_mode']) {
+        ([string]$TaskMaterialization.edit_mode).ToLowerInvariant()
+    }
+    else {
+        ''
+    }
+    if (
+        $materializationStatus -eq 'not_required' -and
+        $materializationReasonCode -eq 'supported_read_only_artifact_write_contract_valid' -and
+        $materializationEditMode -eq 'artifact_write'
+    ) {
+        return $true
+    }
 
     $category = ([string]$TaskCategory).ToLowerInvariant()
     $taskMode = if (Get-Command -Name Resolve-TodTaskMode -ErrorAction SilentlyContinue) { Resolve-TodTaskMode -Task $Task } else { '' }
     $modeOrCategory = @($category, ([string]$taskMode).ToLowerInvariant()) | Where-Object { -not [string]::IsNullOrWhiteSpace([string]$_) }
+    $taskText = if (Get-Command -Name Get-TaskRoutingText -ErrorAction SilentlyContinue) {
+        Get-TaskRoutingText -Task $Task
+    }
+    else {
+        @(
+            if ($Task.PSObject.Properties['title']) { [string]$Task.title }
+            if ($Task.PSObject.Properties['scope']) { [string]$Task.scope }
+            if ($Task.PSObject.Properties['description']) { [string]$Task.description }
+        ) -join ' '
+    }
+    if ($modeOrCategory -contains 'apply_packet_artifact') {
+        return ([string]$taskText -match '(?im)^\s*(Input Artifact|Packet Artifact)\s*:\s*runtime_remote_training/tod_independent_resolution_attempts/[A-Za-z0-9_./-]+?\.json\s*$')
+    }
+    if ($modeOrCategory -contains 'packet_formation') {
+        $mentionsSourceAnchorPacketDirective = $taskText -match '(?i)source[-_\s]?anchor\s+packet[-_\s]?directive|packet[-_\s]?directive\s+materialization|directive[-_\s]?materialization\s+packet'
+        $hasSourceAnchorPacketInput = $taskText -match '(?im)^\s*Input Artifact\s*:\s*runtime_remote_training/read_only_audit_artifacts/[A-Za-z0-9_./-]+?\.json\s*$'
+        $hasSourceAnchorPacketOutput = $taskText -match '(?im)^\s*Output Artifact\s*:\s*runtime_remote_training/tod_independent_resolution_attempts/[A-Za-z0-9_./-]+?\.json\s*$'
+        if ($mentionsSourceAnchorPacketDirective -and $hasSourceAnchorPacketInput -and $hasSourceAnchorPacketOutput) {
+            return $true
+        }
+    }
     if ($modeOrCategory -contains 'target_selection') {
-        $taskTextForTargetSelection = if (Get-Command -Name Get-TaskRoutingText -ErrorAction SilentlyContinue) {
-            Get-TaskRoutingText -Task $Task
+        $taskTextForTargetSelection = $taskText
+        $hasEditDirectives = $taskTextForTargetSelection -match '(?im)^\s*(Edit Mode|Old Text|New Text|Packet Source)\s*:'
+        $targetDirective = [regex]::Match($taskTextForTargetSelection, '(?im)^\s*Target File\s*:\s*(?<path>\S[^\r\n]*)\s*$')
+        $hasSourceTargetDirective = $false
+        if ($targetDirective.Success) {
+            $targetPath = ([string]$targetDirective.Groups['path'].Value).Trim().Replace('\', '/').ToLowerInvariant()
+            $hasSourceTargetDirective = -not ($targetPath.StartsWith('runtime_remote_training/tod_independent_resolution_attempts/') -and $targetPath.EndsWith('.json'))
         }
-        else {
-            ''
-        }
-        if ($taskTextForTargetSelection -match '(?im)^\s*(Target File|Edit Mode|Old Text|New Text|Packet Source)\s*:') {
+        if ($hasEditDirectives -or $hasSourceTargetDirective) {
             return $false
         }
         return $true
     }
+    if ($modeOrCategory -contains 'inspection' -or $modeOrCategory -contains 'inspection_only') {
+        $anchorSelectionText = ([string]$taskText).ToLowerInvariant()
+        $mentionsAnchorSelection = $anchorSelectionText -match 'anchor[_\-\s]+selection|select[_\-\s]+.*anchor|choose[_\-\s]+.*anchor'
+        $hasSourceDirective = $taskText -match '(?im)^\s*(Source File|Inspect Target File)\s*:\s*(scripts|tmp_remote_mim|core|routes|app|tools|tests)[^\r\n]*$'
+        $hasReadOnlyOutput = $taskText -match '(?im)^\s*Output\s*:\s*runtime_remote_training/read_only_audit_artifacts/[A-Za-z0-9_./-]+?\.json\s*$'
+        if ($mentionsAnchorSelection -and $hasSourceDirective -and $hasReadOnlyOutput) {
+            return $true
+        }
+    }
 
-    if (@($modeOrCategory | Where-Object { $_ -in @('read_only_assessment', 'report_only', 'diagnostic_only', 'inspection_only', 'inspection', 'review_only', 'source_anchor_observation') }).Count -gt 0) {
+    if (@($modeOrCategory | Where-Object { $_ -in @('read_only_assessment', 'read_only_role_classification', 'report_only', 'diagnostic_only', 'inspection_only', 'inspection', 'review_only', 'source_anchor_observation') }).Count -gt 0) {
         $taskTextForReadOnly = if (Get-Command -Name Get-TaskRoutingText -ErrorAction SilentlyContinue) {
             Get-TaskRoutingText -Task $Task
         }
@@ -7988,17 +8333,7 @@ function Test-TaskAllowsLocalExecutionWithoutMaterialization {
         }
     }
 
-    $taskText = if (Get-Command -Name Get-TaskRoutingText -ErrorAction SilentlyContinue) {
-        Get-TaskRoutingText -Task $Task
-    }
-    else {
-        @(
-            if ($Task.PSObject.Properties['title']) { [string]$Task.title }
-            if ($Task.PSObject.Properties['scope']) { [string]$Task.scope }
-            if ($Task.PSObject.Properties['description']) { [string]$Task.description }
-        ) -join ' '
-    }
-    if (@('read_only_assessment', 'report_only', 'diagnostic_only', 'inspection_only', 'inspection', 'review_only', 'source_anchor_observation') -contains $category) {
+    if (@('read_only_assessment', 'report_only', 'diagnostic_only', 'inspection_only', 'inspection', 'review_only', 'source_anchor_observation', 'target_selection', 'packet_formation') -contains $category) {
         $artifactTaskText = ([string]$taskText).ToLowerInvariant()
         $mentionsSourceAnchorObservation = $artifactTaskText -match 'source[-_\s]?anchor|anchor\s+observation|exact\s+source\s+anchor|old_text\s+anchor'
         $mentionsReadOnlyAuditOutput = $artifactTaskText -match 'runtime_remote_training/read_only_audit_artifacts/[a-z0-9_./-]+?\.json'
@@ -8009,9 +8344,17 @@ function Test-TaskAllowsLocalExecutionWithoutMaterialization {
         if ($mentionsSourceAnchorObservation -and $mentionsReadOnlyAuditOutput -and $hasSourceAnchorDirectives) {
             return $true
         }
-        $mentionsPacketBodySynthesis = $artifactTaskText -match 'packet[-_\s]?body\s+synthesis|bounded\s+new\s+text|new_text\s+artifact\s+body'
+        $mentionsPacketBodySynthesis = $artifactTaskText -match 'packet[-_\s]?body\s+synthesis|bounded\s+new\s+text|new_text\s+artifact\s+body|bounded\s+snippet\s+packet|snippet\s+body\s+synthesis|source[-_\s]?anchor\s+packet'
         $mentionsPacketArtifactOutput = $artifactTaskText -match 'runtime_remote_training/tod_independent_resolution_attempts/[a-z0-9_./-]+?\.json'
         if ($mentionsPacketBodySynthesis -and $mentionsPacketArtifactOutput) {
+            return $true
+        }
+        $mentionsPacketQualityReview = $artifactTaskText -match 'packet[_ -]quality[_ -]review'
+        $hasPacketQualityReviewDirectives = (
+            $taskText -match '(?im)^\s*Review Artifact\s*:\s*runtime_remote_training/tod_independent_resolution_attempts/[A-Za-z0-9_./-]+?\.json\s*$' -and
+            $taskText -match '(?im)^\s*Source File\s*:'
+        )
+        if ($mentionsPacketQualityReview -and $mentionsPacketArtifactOutput -and $hasPacketQualityReviewDirectives) {
             return $true
         }
         $mentionsDifferentTargetDiscovery = $artifactTaskText -match 'different[-_\s]?target\s+discovery|selected_candidate_or_none|tod_different_target_discovery_drill'
@@ -8320,6 +8663,16 @@ function Resolve-LocalExecutionSuitability {
             'inspection' {
                 $classification = 'local_supported'
                 $reason = 'inspection_is_local_first'
+                $boundedLocalSlice = $true
+            }
+            'source_anchor_observation' {
+                $classification = 'local_supported'
+                $reason = 'source_anchor_observation_is_local_first'
+                $boundedLocalSlice = $true
+            }
+            'read_only_role_classification' {
+                $classification = 'local_supported'
+                $reason = 'read_only_role_classification_is_local_first'
                 $boundedLocalSlice = $true
             }
             'target_selection' {
@@ -12245,15 +12598,6 @@ function New-TodNextTaskSelectionPlan {
                 }
                 $packetOldTextForCurrentCheck = if ($packetTask.PSObject.Properties['old_text']) { [string]$packetTask.old_text } else { '' }
                 $packetNewTextForCurrentCheck = if ($packetTask.PSObject.Properties['new_text']) { [string]$packetTask.new_text } else { '' }
-                $packetReplacementStillApplicable = Test-TodPacketOldTextStillCurrent -TargetFile ([string]$packetTask.target_file) -OldText $packetOldTextForCurrentCheck
-                if (-not $packetReplacementStillApplicable) {
-                    $rejectedCandidates.Add([pscustomobject]@{
-                            task_id = ('packet_candidate:{0}' -f [string]$packetTask.packet_name)
-                            reason = 'packet_candidate_old_text_not_current'
-                        }) | Out-Null
-                    $validationPlan.Add(('packet candidate {0} is not actionable because its old_text no longer matches the target file' -f [string]$packetTask.packet_name)) | Out-Null
-                    continue
-                }
                 $packetNewTextAlreadyPresent = Test-TodPacketNewTextAlreadyPresent -TargetFile ([string]$packetTask.target_file) -NewText $packetNewTextForCurrentCheck
                 if ($packetNewTextAlreadyPresent) {
                     $rejectedCandidates.Add([pscustomobject]@{
@@ -12262,6 +12606,16 @@ function New-TodNextTaskSelectionPlan {
                             target_file = [string]$packetTask.target_file
                         }) | Out-Null
                     $validationPlan.Add(('packet candidate {0} is stale because its new_text is already present in {1}' -f [string]$packetTask.packet_name, [string]$packetTask.target_file)) | Out-Null
+                    continue
+                }
+                $packetReplacementStillApplicable = Test-TodPacketOldTextStillCurrent -TargetFile ([string]$packetTask.target_file) -OldText $packetOldTextForCurrentCheck
+                if (-not $packetReplacementStillApplicable) {
+                    $rejectedCandidates.Add([pscustomobject]@{
+                            task_id = ('packet_candidate:{0}' -f [string]$packetTask.packet_name)
+                            reason = 'packet_candidate_old_text_not_current'
+                            target_file = [string]$packetTask.target_file
+                        }) | Out-Null
+                    $validationPlan.Add(('packet candidate {0} is not actionable because its old_text no longer matches the target file' -f [string]$packetTask.packet_name)) | Out-Null
                     continue
                 }
                 $createTaskSpec = $packetTask.task_spec
@@ -15039,8 +15393,10 @@ function Write-CodexHandoffTaskPackage {
     $objectiveTitle = if ($Request.PSObject.Properties['metadata_json'] -and $null -ne $Request.metadata_json -and $Request.metadata_json.PSObject.Properties['objective_title'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.metadata_json.objective_title)) { [string]$Request.metadata_json.objective_title } else { $objectiveId }
     $taskTitle = if ($Request.PSObject.Properties['title'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.title)) { [string]$Request.title } elseif ($Request.PSObject.Properties['metadata_json'] -and $null -ne $Request.metadata_json -and $Request.metadata_json.PSObject.Properties['task_title'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.metadata_json.task_title)) { [string]$Request.metadata_json.task_title } else { "Bridge task $taskId" }
     $taskScope = if ($Request.PSObject.Properties['scope'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.scope)) { [string]$Request.scope } elseif ($Request.PSObject.Properties['summary'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.summary)) { [string]$Request.summary } elseif ($Request.PSObject.Properties['requested_outcome'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.requested_outcome)) { [string]$Request.requested_outcome } else { 'Implement the synchronized codex handoff request.' }
+    $taskDescription = if ($Request.PSObject.Properties['description'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.description)) { [string]$Request.description } elseif ($Request.PSObject.Properties['metadata_json'] -and $null -ne $Request.metadata_json -and $Request.metadata_json.PSObject.Properties['task_description'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.metadata_json.task_description)) { [string]$Request.metadata_json.task_description } else { $taskScope }
     $acceptanceCriteria = if ($Request.PSObject.Properties['metadata_json'] -and $null -ne $Request.metadata_json -and $Request.metadata_json.PSObject.Properties['task_acceptance_criteria'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.metadata_json.task_acceptance_criteria)) { [string]$Request.metadata_json.task_acceptance_criteria } else { '' }
     $taskType = if ($Request.PSObject.Properties['task_class'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.task_class)) { [string]$Request.task_class } elseif ($Request.PSObject.Properties['task_mode'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.task_mode)) { [string]$Request.task_mode } else { 'implementation' }
+    $taskCategory = if ($Request.PSObject.Properties['task_category'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.task_category)) { [string]$Request.task_category } elseif ($Request.PSObject.Properties['metadata_json'] -and $null -ne $Request.metadata_json -and $Request.metadata_json.PSObject.Properties['task_category'] -and -not [string]::IsNullOrWhiteSpace([string]$Request.metadata_json.task_category)) { [string]$Request.metadata_json.task_category } else { '' }
 
     $template = Get-Content -Path $templatePath -Raw
     $rendered = $template
@@ -15053,6 +15409,8 @@ function Write-CodexHandoffTaskPackage {
     $rendered = $rendered.Replace('{{TASK_ID}}', $taskId)
     $rendered = $rendered.Replace('{{TASK_TITLE}}', $taskTitle)
     $rendered = $rendered.Replace('{{TASK_TYPE}}', $taskType)
+    $rendered = $rendered.Replace('{{TASK_CATEGORY}}', $taskCategory)
+    $rendered = $rendered.Replace('{{TASK_DESCRIPTION}}', $taskDescription)
     $rendered = $rendered.Replace('{{TASK_SCOPE}}', $taskScope)
     $rendered = $rendered.Replace('{{TASK_DEPENDENCIES}}', '')
     $rendered = $rendered.Replace('{{TASK_ACCEPTANCE_CRITERIA}}', $acceptanceCriteria)
@@ -15579,6 +15937,7 @@ function Invoke-ExecuteChatTaskRequest {
         generated_at = Get-UtcNow
         title = if (-not [string]::IsNullOrWhiteSpace($Title)) { [string]$Title } else { "Chat task $TaskId" }
         scope = [string]$Scope
+        description = [string]$resolvedDescription
         summary = $resolvedDescription
         requested_outcome = if (-not [string]::IsNullOrWhiteSpace($SuccessCriteria)) { [string]$SuccessCriteria } else { $resolvedAcceptance }
         target_file = if (-not [string]::IsNullOrWhiteSpace($TargetFile)) { ([string]$TargetFile) -replace '[\\/]+', '/' } else { '' }
@@ -15591,6 +15950,7 @@ function Invoke-ExecuteChatTaskRequest {
         metadata_json = [pscustomobject]@{
             objective_title = [string]$objective.title
             task_title = if (-not [string]::IsNullOrWhiteSpace($Title)) { [string]$Title } else { "Chat task $TaskId" }
+            task_description = [string]$resolvedDescription
             task_acceptance_criteria = $resolvedAcceptance
             task_category = $requestedTaskCategory
             task_mode = [string]$resolvedTaskMode
@@ -15779,6 +16139,7 @@ function Invoke-ExecuteChatTaskRequest {
         }
     }
     $task[0].scope = [string]$Scope
+    $task[0] | Add-Member -NotePropertyName description -NotePropertyValue ([string]$resolvedDescription) -Force
     $task[0].title = if (-not [string]::IsNullOrWhiteSpace($Title)) { [string]$Title } else { "Chat task $TaskId" }
     $materialization = Resolve-TaskBoundedEditMaterialization -Task $task[0]
     $task[0] | Add-Member -NotePropertyName materialization -NotePropertyValue $materialization -Force
@@ -15940,6 +16301,8 @@ function Invoke-ExecuteChatTaskRequest {
                 PackagePath = $packagePath
                 ConfigPath = $ResolvedConfigPath
                 StatePath = $ResolvedStatePath
+                ForceConfiguredEngine = [bool]$ForceConfiguredEngine
+
                 SkipNextTaskSelectionLoop = $true
                 SkipPostCompletionTail = $true
             }
@@ -17530,7 +17893,21 @@ function Drain-TodIntakeQueueAfterTerminalActiveLane {
         $requestId = if ($item.PSObject.Properties['request_id']) { [string]$item.request_id } else { '' }
         $objectiveId = if ($item.PSObject.Properties['objective_id']) { [string]$item.objective_id } else { '' }
 
-        if ($itemStatus -eq 'accepted' -and $item.PSObject.Properties['expires_at'] -and -not [string]::IsNullOrWhiteSpace([string]$item.expires_at)) {
+        if ([string]::IsNullOrWhiteSpace($taskId) -or [string]::IsNullOrWhiteSpace($requestId) -or [string]::IsNullOrWhiteSpace($objectiveId)) {
+            $item | Add-Member -NotePropertyName status -NotePropertyValue 'blocked' -Force
+            $item | Add-Member -NotePropertyName blocked_reason_code -NotePropertyValue 'intake_item_missing_required_identity' -Force
+            $item | Add-Member -NotePropertyName blocked_at -NotePropertyValue (Get-UtcNow) -Force
+            [void]$retainedItems.Add($item)
+            Publish-TodActivityEvent -EventType 'queued_task_blocked_with_reason' -ObjectiveId $objectiveId -TaskId $taskId -RequestId $requestId -CorrelationId '' -Title $(if ($item.PSObject.Properties['title']) { [string]$item.title } else { '' }) -Status 'blocked' -Message 'Queued intake item could not be drained because it is missing required identity fields.' -Details ([ordered]@{
+                    reason_code = 'intake_item_missing_required_identity'
+                    request_id = $requestId
+                    task_id = $taskId
+                    objective_id = $objectiveId
+            }) -Source 'tod.intake' -Surface 'tod-intake' -Summary 'Queued task blocked during intake drain.' -CurrentAction 'Skipped invalid queued intake item.' -RecoveryState 'required' | Out-Null
+            continue
+        }
+
+        if ($itemStatus -in @('queued', 'deferred', 'accepted') -and $item.PSObject.Properties['expires_at'] -and -not [string]::IsNullOrWhiteSpace([string]$item.expires_at)) {
             $expiresAt = $null
             try {
                 $expiresAt = ([datetime]::Parse([string]$item.expires_at)).ToUniversalTime()
@@ -17545,20 +17922,6 @@ function Drain-TodIntakeQueueAfterTerminalActiveLane {
                 [void]$retainedItems.Add($item)
                 continue
             }
-        }
-
-        if ([string]::IsNullOrWhiteSpace($taskId) -or [string]::IsNullOrWhiteSpace($requestId) -or [string]::IsNullOrWhiteSpace($objectiveId)) {
-            $item | Add-Member -NotePropertyName status -NotePropertyValue 'blocked' -Force
-            $item | Add-Member -NotePropertyName blocked_reason_code -NotePropertyValue 'intake_item_missing_required_identity' -Force
-            $item | Add-Member -NotePropertyName blocked_at -NotePropertyValue (Get-UtcNow) -Force
-            [void]$retainedItems.Add($item)
-            Publish-TodActivityEvent -EventType 'queued_task_blocked_with_reason' -ObjectiveId $objectiveId -TaskId $taskId -RequestId $requestId -CorrelationId '' -Title $(if ($item.PSObject.Properties['title']) { [string]$item.title } else { '' }) -Status 'blocked' -Message 'Queued intake item could not be drained because it is missing required identity fields.' -Details ([ordered]@{
-                    reason_code = 'intake_item_missing_required_identity'
-                    request_id = $requestId
-                    task_id = $taskId
-                    objective_id = $objectiveId
-            }) -Source 'tod.intake' -Surface 'tod-intake' -Summary 'Queued task blocked during intake drain.' -CurrentAction 'Skipped invalid queued intake item.' -RecoveryState 'required' | Out-Null
-            continue
         }
 
         if (
@@ -18703,11 +19066,39 @@ function Get-LocalExecutionValidationChecks {
         $result = if ($index -lt $testResults.Count) { [string]$testResults[$index] } else { "" }
         $checks += [pscustomobject]@{
             name = $name
-            passed = ($result -eq 'pass')
+            passed = ([string]$result -match '^(passed|pass|completed|ok)$')
             required = $true
         }
     }
     return @($checks)
+}
+
+function Get-LocalExecutionRequiredValidationFailures {
+    param([object[]]$ValidationResults = @())
+
+    $failures = @()
+    foreach ($check in @($ValidationResults)) {
+        if ($null -eq $check) { continue }
+        $required = $true
+        if ($check.PSObject.Properties['required']) {
+            $required = [bool]$check.required
+        }
+        if (-not $required) { continue }
+
+        $passed = $false
+        if ($check.PSObject.Properties['passed']) {
+            $passed = [bool]$check.passed
+        }
+        elseif ($check.PSObject.Properties['status']) {
+            $passed = ([string]$check.status -match '^(passed|pass|completed|ok)$')
+        }
+
+        if (-not $passed) {
+            $failures += $check
+        }
+    }
+
+    return @($failures)
 }
 
 function Get-LocalExecutionCommandCapture {
@@ -18750,12 +19141,16 @@ function Resolve-LocalExecutionTaskClass {
             'read_only_audit' { return 'read_only_assessment' }
             'capability_assessment' { return 'read_only_assessment' }
             'assessment' { return 'read_only_assessment' }
+            'inspection' { return 'inspection_only' }
             'inspection_only' { return 'inspection_only' }
             'validation' { return 'validation_only' }
             'validation_only' { return 'validation_only' }
             'report_only' { return 'report_only' }
+            'review_only' { return 'report_only' }
             'diagnostic_only' { return 'diagnostic_only' }
             'inventory_only' { return 'inventory_only' }
+            'target_selection' { return 'target_selection' }
+            'packet_formation' { return 'implementation' }
         }
     }
 
@@ -18770,10 +19165,13 @@ function Resolve-LocalExecutionTaskClass {
         ) -join ' ').ToLowerInvariant()
     }
     if ($blob -match '\bread[ _-]?only[ _-]?assessment\b|\bcapability assessment\b') { return 'read_only_assessment' }
+    if ($blob -match '(?im)^\s*task\s+mode\s*:\s*inspection\s*$') { return 'inspection_only' }
+    if ($blob -match '\bread[ _-]?only\b' -and $blob -match '\binspection\b') { return 'inspection_only' }
     if ($blob -match '\binspection[ _-]?only\b') { return 'inspection_only' }
     if ($blob -match '\breport[ _-]?only\b') { return 'report_only' }
     if ($blob -match '\bdiagnostic[ _-]?only\b') { return 'diagnostic_only' }
     if ($blob -match '\binventory[ _-]?only\b') { return 'inventory_only' }
+    if ($blob -match '\btarget[ _-]?selection\b|\bselect(?:ing)?\s+(?:one\s+)?(?:fresh\s+)?target\b|\bchoose(?:ing)?\s+(?:one\s+)?(?:fresh\s+)?target\b') { return 'target_selection' }
 
     return 'implementation'
 }
@@ -18785,12 +19183,15 @@ function Test-LocalExecutionPatchRequired {
     )
 
     $resolvedTaskClass = if ([string]::IsNullOrWhiteSpace($TaskClass)) { Resolve-LocalExecutionTaskClass -Task $Task } else { [string]$TaskClass }
-    if (@('read_only_assessment', 'inspection_only', 'report_only', 'diagnostic_only', 'inventory_only', 'validation_only') -contains $resolvedTaskClass) {
+    if (@('read_only_assessment', 'inspection_only', 'report_only', 'diagnostic_only', 'inventory_only', 'validation_only', 'target_selection') -contains $resolvedTaskClass) {
         return $false
     }
 
     $taskType = if ($Task.PSObject.Properties['type']) { ([string]$Task.type).ToLowerInvariant() } else { '' }
     $taskCategory = Resolve-TaskCategory -Task $Task
+    if ([string]::Equals($taskCategory, 'target_selection', [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $false
+    }
     if (@('code_change', 'refactor', 'test_generation', 'bridge_runtime') -contains $taskCategory) {
         return $true
     }
@@ -18818,7 +19219,7 @@ function Get-LocalExecutionNoOpAssessment {
     )
 
     $taskClass = Resolve-LocalExecutionTaskClass -Task $Task
-    $isExempt = @('read_only_assessment', 'inspection_only', 'report_only', 'diagnostic_only', 'inventory_only') -contains $taskClass
+    $isExempt = @('read_only_assessment', 'inspection_only', 'report_only', 'diagnostic_only', 'inventory_only', 'target_selection') -contains $taskClass
     $patchRequired = Test-LocalExecutionPatchRequired -Task $Task -TaskClass $taskClass
     $filesChanged = @($ResultPayload.files_changed | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
     $validationChecks = @(Get-LocalExecutionValidationChecks -ResultPayload $ResultPayload)
@@ -19064,7 +19465,7 @@ function Get-TodMaterialImplementationProofAssessment {
         $taskText -match '(?im)^\s*edit\s+mode\s*:\s*artifact_write\s*$'
     )
     $patchRequired = if ($NoOpAssessment.PSObject.Properties['patch_required']) { [bool]$NoOpAssessment.patch_required } else { Test-LocalExecutionPatchRequired -Task $Task -TaskClass $taskClass }
-    $exempt = @('inspection_only', 'report_only', 'diagnostic_only', 'inventory_only') -contains $taskClass
+    $exempt = @('inspection_only', 'report_only', 'diagnostic_only', 'inventory_only', 'target_selection') -contains $taskClass
     $rawFilesChanged = if ($ResultPayload.PSObject.Properties['files_changed'] -and $null -ne $ResultPayload.files_changed) { @($ResultPayload.files_changed) } else { @() }
     $filesChanged = @($rawFilesChanged | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
     $materialFiles = @($filesChanged | Where-Object { -not (Test-TodWrapperOnlyChangedPath -PathValue ([string]$_)) })
@@ -19098,12 +19499,18 @@ function Get-TodMaterialImplementationProofAssessment {
     $testsRun = if ($ResultPayload.PSObject.Properties['tests_run']) { @($ResultPayload.tests_run | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } else { @() }
     $testResults = if ($ResultPayload.PSObject.Properties['test_results']) { @($ResultPayload.test_results | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) } else { @() }
     $validationResultItems = @($ValidationResults)
+    $requiredValidationFailures = @(Get-LocalExecutionRequiredValidationFailures -ValidationResults $validationResultItems)
     $commandRunItems = @($CommandsRun)
-    $failingTestResults = @($testResults | Where-Object { ([string]$_).ToLowerInvariant() -match 'fail|blocked|error|not_run' })
+    $failingTestResults = if (@($validationResultItems).Count -gt 0) {
+        @($requiredValidationFailures)
+    }
+    else {
+        @($testResults | Where-Object { ([string]$_).ToLowerInvariant() -match 'fail|blocked|error|not_run' })
+    }
     $validationEvidencePresent = (@($validationResultItems).Count -gt 0) -or (@($testsRun).Count -gt 0) -or (@($commandRunItems).Count -gt 0) -or (-not [string]::IsNullOrWhiteSpace($DiffSummary))
     $validationLooksPassed = $validationEvidencePresent -and (
-        (@($failingTestResults).Count -eq 0) -or
-        (@($validationResultItems).Count -gt 0)
+        @($failingTestResults).Count -eq 0 -and
+        @($requiredValidationFailures).Count -eq 0
     )
     $noChangeRequired = ($ResultPayload.PSObject.Properties['no_change_required'] -and $null -ne $ResultPayload.no_change_required -and [bool]$ResultPayload.no_change_required)
     $materialDiffPresent = (@($materialFiles).Count -gt 0) -or (-not [string]::IsNullOrWhiteSpace($DiffSummary) -and $DiffSummary -match '\b(updated|patched|modified|applied|created|inserted|changed)\b')
@@ -19127,6 +19534,7 @@ function Get-TodMaterialImplementationProofAssessment {
     if ($patchRequired -and $noChangeRequired -and @($materialFiles).Count -eq 0) { $reasonCodes += 'validation_only_no_material_change' }
     if ($patchRequired -and -not $validationEvidencePresent) { $reasonCodes += 'validation_evidence_missing' }
     if ($patchRequired -and $validationEvidencePresent -and -not $validationLooksPassed) { $reasonCodes += 'validation_not_proven_passed' }
+    if (@($requiredValidationFailures).Count -gt 0) { $reasonCodes += 'required_validation_failed' }
 
     $allowsCompletion = $true
     if (-not $exempt -and $patchRequired) {
@@ -19201,7 +19609,7 @@ function Publish-LocalExecutionArtifacts {
     $explicitReasonCode = if ($ResultPayload.PSObject.Properties['reason_code']) { [string]$ResultPayload.reason_code } else { '' }
     $explicitRecoveryState = if ($ResultPayload.PSObject.Properties['recovery_state']) { [string]$ResultPayload.recovery_state } else { '' }
     $explicitBlockers = @($ResultPayload.structured_findings | Where-Object { $null -ne $_ -and $_.PSObject.Properties['type'] -and [string]$_.type -eq 'blocker' })
-    $hasExplicitBlocker = -not [string]::IsNullOrWhiteSpace($explicitReasonCode)
+    $hasExplicitBlocker = (-not [string]::IsNullOrWhiteSpace($explicitReasonCode)) -and -not [string]::Equals($explicitReasonCode, 'required_validation_failed', [System.StringComparison]::OrdinalIgnoreCase)
     $diffSummary = if ($ResultPayload.PSObject.Properties['diff_summary']) { [string]$ResultPayload.diff_summary } else { '' }
     $commandsRun = if ($ResultPayload.PSObject.Properties['commands_run'] -and $null -ne $ResultPayload.commands_run) {
         @($ResultPayload.commands_run | ForEach-Object { [string]$_ } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
@@ -19212,7 +19620,14 @@ function Publish-LocalExecutionArtifacts {
     else {
         @()
     }
-    $validationResults = if ($ResultPayload.PSObject.Properties['validation_results'] -and $null -ne $ResultPayload.validation_results) { @($ResultPayload.validation_results) } else { @($validationChecks) }
+    $validationResults = if ($ResultPayload.PSObject.Properties['validation_results'] -and $null -ne $ResultPayload.validation_results) { @($ResultPayload.validation_results) } else { @() }
+    $hasExplicitValidationResults = @($validationResults | Where-Object {
+            $null -ne $_ -and @($_.PSObject.Properties).Count -gt 0
+        }).Count -gt 0
+    if (-not $hasExplicitValidationResults) {
+        $validationResults = @($validationChecks)
+    }
+    $requiredValidationFailures = @(Get-LocalExecutionRequiredValidationFailures -ValidationResults $validationResults)
     $artifactBlockers = if ($ResultPayload.PSObject.Properties['blockers'] -and $null -ne $ResultPayload.blockers) { @($ResultPayload.blockers) } else { @($explicitBlockers) }
     $confidence = if ($ResultPayload.PSObject.Properties['confidence']) { [string]$ResultPayload.confidence } elseif (@($filesChanged).Count -gt 0) { 'medium-high' } else { 'medium' }
     $strongestEvidence = if (@($filesChanged).Count -gt 0) { "Changed files: $($filesChanged -join ', ')" } elseif ($null -ne $commandCapture -and $commandCapture.PSObject.Properties['stdout'] -and -not [string]::IsNullOrWhiteSpace([string]$commandCapture.stdout)) { [string]$commandCapture.stdout } elseif ($null -ne $commandCapture -and $commandCapture.PSObject.Properties['stderr'] -and -not [string]::IsNullOrWhiteSpace([string]$commandCapture.stderr)) { [string]$commandCapture.stderr } else { $summary }
@@ -19221,18 +19636,19 @@ function Publish-LocalExecutionArtifacts {
     $commandRunnerSummary = if ($null -eq $commandCapture) { 'No validation command output was captured.' } elseif (-not [string]::IsNullOrWhiteSpace($commandOutput)) { $commandOutput } else { 'Validation command executed without captured output.' }
     $materialProof = Get-TodMaterialImplementationProofAssessment -Task $Task -ResultPayload $ResultPayload -NoOpAssessment $noOpAssessment -ValidationResults $validationResults -CommandsRun $commandsRun -DiffSummary $diffSummary
     $materialProofBlocked = -not [bool]$materialProof.allows_authoritative_completion
-    $passed = ($ReviewDecision -eq 'pass') -and -not [bool]$noOpAssessment.detected -and -not $hasExplicitBlocker -and -not $materialProofBlocked
+    $hasRequiredValidationFailure = @($requiredValidationFailures).Count -gt 0
+    $passed = ($ReviewDecision -eq 'pass') -and -not [bool]$noOpAssessment.detected -and -not $hasExplicitBlocker -and -not $materialProofBlocked -and -not $hasRequiredValidationFailure
     $status = if ($hasExplicitBlocker) { 'blocked' } elseif ([bool]$noOpAssessment.detected) { 'blocked' } elseif ($materialProofBlocked) { 'blocked' } elseif ($passed) { 'completed' } else { 'blocked' }
     $executionState = if ($hasExplicitBlocker) { 'blocked_with_reason' } elseif ([bool]$noOpAssessment.detected) { 'no_op_rejected' } elseif ($materialProofBlocked) { 'material_implementation_not_proven' } elseif ($passed) { 'completed' } else { 'blocked' }
     $activityStatus = if ($hasExplicitBlocker) { 'blocked' } elseif ([bool]$noOpAssessment.detected) { 'blocked' } elseif ($materialProofBlocked) { 'blocked' } elseif ($passed) { 'completed' } else { 'blocked' }
-    $currentAction = if ($hasExplicitBlocker) { 'Blocked execution on an explicit engine/runtime blocker and published the blocker evidence.' } elseif ([bool]$noOpAssessment.detected) { 'Rejected completion because the execution did not produce meaningful work evidence.' } elseif ($materialProofBlocked) { 'Rejected completion because material implementation proof was missing or wrapper-only.' } elseif ($passed) { 'Completed the bounded local task and published local execution artifacts for TOD.' } else { 'Published the bounded local task outcome and marked the execution slice for review.' }
-    $nextStep = if ($hasExplicitBlocker) { $(if (-not [string]::IsNullOrWhiteSpace($explicitRecoveryState)) { $explicitRecoveryState } else { 'local_fallback_or_replan_required' }) } elseif ([bool]$noOpAssessment.detected) { 'replay_or_replan_required' } elseif ($materialProofBlocked) { 'replay_with_material_diff_or_explicit_no_change_validation' } elseif ($passed) { 'Continue with the next bounded local objective and its focused validation path.' } else { 'Review the failing checks, repair the bounded slice, and rerun the focused validation path.' }
-    $nextValidation = if ($hasExplicitBlocker) { if (@($validationChecks).Count -gt 0) { [string]$validationChecks[0].name } else { 'explicit_blocker_review' } } elseif ([bool]$noOpAssessment.detected) { 'meaningful_execution_evidence_required' } elseif ($materialProofBlocked) { 'material_implementation_proof_required' } elseif (@($validationChecks).Count -gt 0) { [string]$validationChecks[0].name } else { 'review_local_execution_artifacts' }
+    $currentAction = if ($hasExplicitBlocker) { 'Blocked execution on an explicit engine/runtime blocker and published the blocker evidence.' } elseif ([bool]$noOpAssessment.detected) { 'Rejected completion because the execution did not produce meaningful work evidence.' } elseif ($materialProofBlocked) { 'Rejected completion because material implementation proof was missing or wrapper-only.' } elseif ($hasRequiredValidationFailure) { 'Rejected completion because a required validation check failed.' } elseif ($passed) { 'Completed the bounded local task and published local execution artifacts for TOD.' } else { 'Published the bounded local task outcome and marked the execution slice for review.' }
+    $nextStep = if ($hasExplicitBlocker) { $(if (-not [string]::IsNullOrWhiteSpace($explicitRecoveryState)) { $explicitRecoveryState } else { 'local_fallback_or_replan_required' }) } elseif ([bool]$noOpAssessment.detected) { 'replay_or_replan_required' } elseif ($materialProofBlocked) { 'replay_with_material_diff_or_explicit_no_change_validation' } elseif ($hasRequiredValidationFailure) { 'repair_required_validation_failure_and_rerun' } elseif ($passed) { 'Continue with the next bounded local objective and its focused validation path.' } else { 'Review the failing checks, repair the bounded slice, and rerun the focused validation path.' }
+    $nextValidation = if ($hasExplicitBlocker) { if (@($validationChecks).Count -gt 0) { [string]$validationChecks[0].name } else { 'explicit_blocker_review' } } elseif ([bool]$noOpAssessment.detected) { 'meaningful_execution_evidence_required' } elseif ($materialProofBlocked) { 'material_implementation_proof_required' } elseif ($hasRequiredValidationFailure) { [string]$requiredValidationFailures[0].name } elseif (@($validationChecks).Count -gt 0) { [string]$validationChecks[0].name } else { 'review_local_execution_artifacts' }
     $validationStatus = if ($hasExplicitBlocker) { 'blocked' } elseif ([bool]$noOpAssessment.detected) { 'blocked' } elseif ($materialProofBlocked) { 'blocked' } elseif ($passed) { 'passed' } else { 'blocked' }
     $rollbackState = if ($null -ne $rollback -and $rollback.PSObject.Properties['available'] -and [bool]$rollback.available) { 'available' } else { 'not_needed' }
     $rollbackHint = if ($ResultPayload.PSObject.Properties['rollback_hint']) { [string]$ResultPayload.rollback_hint } elseif ($null -ne $rollback -and $rollback.PSObject.Properties['restore_command']) { [string]$rollback.restore_command } else { '' }
-    $reasonCode = if ($hasExplicitBlocker) { $explicitReasonCode } elseif ([bool]$noOpAssessment.detected) { [string]$noOpAssessment.reason_code } elseif ($materialProofBlocked) { (@($materialProof.reason_codes) -join '+') } else { '' }
-    $recoveryState = if ($hasExplicitBlocker) { $(if (-not [string]::IsNullOrWhiteSpace($explicitRecoveryState)) { $explicitRecoveryState } else { 'required' }) } elseif ([bool]$noOpAssessment.detected) { [string]$noOpAssessment.recovery_state } elseif ($materialProofBlocked) { 'material_proof_required' } elseif ($passed) { 'not_needed' } else { 'required' }
+    $reasonCode = if ($hasExplicitBlocker) { $explicitReasonCode } elseif ([bool]$noOpAssessment.detected) { [string]$noOpAssessment.reason_code } elseif ($materialProofBlocked) { (@($materialProof.reason_codes) -join '+') } elseif ($hasRequiredValidationFailure) { 'required_validation_failed' } else { '' }
+    $recoveryState = if ($hasExplicitBlocker) { $(if (-not [string]::IsNullOrWhiteSpace($explicitRecoveryState)) { $explicitRecoveryState } else { 'required' }) } elseif ([bool]$noOpAssessment.detected) { [string]$noOpAssessment.recovery_state } elseif ($materialProofBlocked) { 'material_proof_required' } elseif ($hasRequiredValidationFailure) { 'validation_repair_required' } elseif ($passed) { 'not_needed' } else { 'required' }
     $requestId = Get-TodTaskIdentity -Task $Task
     $executionContract = [pscustomobject]@{
         contract_version = 'tod-execution-loop-v1'
@@ -19374,7 +19790,7 @@ function Publish-LocalExecutionArtifacts {
         status = $validationStatus
         phase = 'local_run_task'
         validation_target = $nextValidation
-        checks = @($validationChecks)
+        checks = @($validationResults)
         evidence = [ordered]@{
             matched_files = @($filesChanged)
             command_output = $commandOutput
@@ -20333,6 +20749,14 @@ switch ($Action) {
         $rendered = $rendered.Replace("{{TASK_ID}}", [string]$task.id)
         $rendered = $rendered.Replace("{{TASK_TITLE}}", [string]$task.title)
         $rendered = $rendered.Replace("{{TASK_TYPE}}", [string]$task.type)
+        $rendered = $rendered.Replace("{{TASK_CATEGORY}}", [string]$task.task_category)
+        $taskDescription = if ($task.PSObject.Properties["description"] -and -not [string]::IsNullOrWhiteSpace([string]$task.description)) {
+            [string]$task.description
+        }
+        else {
+            [string]$task.scope
+        }
+        $rendered = $rendered.Replace("{{TASK_DESCRIPTION}}", $taskDescription)
         $rendered = $rendered.Replace("{{TASK_SCOPE}}", [string]$task.scope)
         $rendered = $rendered.Replace("{{TASK_DEPENDENCIES}}", (($task.dependencies) -join ", "))
         $rendered = $rendered.Replace("{{TASK_ACCEPTANCE_CRITERIA}}", (($task.acceptance_criteria) -join ", "))
@@ -20742,6 +21166,29 @@ switch ($Action) {
         }
         elseif (@($resultPayload.failures).Count -gt 0) {
             $reviewDecision = "revise"
+        }
+        $resultValidationResults = if ($resultPayload.PSObject.Properties['validation_results'] -and $null -ne $resultPayload.validation_results) { @($resultPayload.validation_results) } else { @() }
+        $hasExplicitValidationResults = @($resultValidationResults | Where-Object {
+                $null -ne $_ -and @($_.PSObject.Properties).Count -gt 0
+            }).Count -gt 0
+        if (-not $hasExplicitValidationResults) {
+            $resultValidationResults = @(Get-LocalExecutionValidationChecks -ResultPayload $resultPayload)
+        }
+        $requiredValidationFailures = @(Get-LocalExecutionRequiredValidationFailures -ValidationResults $resultValidationResults)
+        if ((-not $hasExplicitEngineBlocker) -and @($requiredValidationFailures).Count -gt 0) {
+            $failureNames = @($requiredValidationFailures | ForEach-Object {
+                    if ($_.PSObject.Properties['name']) { [string]$_.name } else { 'unnamed_required_validation' }
+                } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            $resultPayload.failures = @(@($resultPayload.failures) + @('Required validation failed: ' + ($failureNames -join ', ')) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -Unique)
+            if (-not $resultPayload.PSObject.Properties['reason_code'] -or [string]::IsNullOrWhiteSpace([string]$resultPayload.reason_code)) {
+                $resultPayload | Add-Member -NotePropertyName reason_code -NotePropertyValue 'required_validation_failed' -Force
+            }
+            else {
+                $resultPayload.reason_code = 'required_validation_failed'
+            }
+            if ($reviewDecision -eq 'pass') {
+                $reviewDecision = 'revise'
+            }
         }
 
         $precheckWarnings = @()

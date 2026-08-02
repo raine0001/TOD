@@ -158,6 +158,7 @@ Describe 'TOD self-driving next task selection' {
         Import-TodFunction -Name 'Get-InferredBoundedValidationCommand'
         Import-TodFunction -Name 'Get-InferredBoundedReplaceDirective'
         Import-TodFunction -Name 'New-BoundedEditMaterializationBlockedPayload'
+        Import-TodFunction -Name 'Resolve-TodTaskMode'
         Import-TodFunction -Name 'Resolve-TaskBoundedEditMaterialization'
         Import-TodFunction -Name 'Get-LocalExecutionReuseSignal'
         Import-TodFunction -Name 'Test-TodLowImpactEvidenceTask'
@@ -201,6 +202,7 @@ Describe 'TOD self-driving next task selection' {
         Import-TodFunction -Name 'Write-TodExecutionJsonAtomically'
         Import-TodFunction -Name 'Write-TodExecutionSharedJson'
         Import-TodFunction -Name 'Publish-TodNextTaskSelectionArtifacts'
+        Import-TodFunction -Name 'Resolve-TodNextTaskSelectionTask'
     }
 
     It 'classifies a wrapper-only completed execution as replay_required' {
@@ -326,6 +328,76 @@ Describe 'TOD self-driving next task selection' {
         [string]$plan.create_task.objective_mode | Should Be 'existing'
         [string]$plan.create_task.selection_source_task_id | Should Be 'TSK-1'
         (@($plan.expected_evidence) -contains 'meaningful_execution_evidence') | Should Be $true
+    }
+
+    It 'promotes a created task even when optional selection source metadata is absent' {
+        $script:optionalSourceState = New-SelectionState -Objectives @(
+            (New-SelectionObjective -Id 'OBJ-OPTIONAL' -Priority 'high')
+        )
+
+        function global:Load-State {
+            return $script:optionalSourceState
+        }
+
+        function global:Save-State {
+            param([Parameter(Mandatory = $true)]$State)
+            $script:optionalSourceState = $State
+        }
+
+        function global:Invoke-TodSelfJsonAction {
+            param(
+                [Parameter(Mandatory = $true)][string]$ActionName,
+                [hashtable]$Arguments
+            )
+
+            if ($ActionName -ne 'add-task') {
+                throw "Unexpected action '$ActionName'"
+            }
+
+            $task = [pscustomobject]@{
+                id = 'TSK-OPTIONAL-CREATED'
+                objective_id = [string]$Arguments.ObjectiveId
+                title = [string]$Arguments.Title
+                scope = [string]$Arguments.Scope
+                type = [string]$Arguments.Type
+                task_category = [string]$Arguments.TaskCategory
+                assigned_executor = [string]$Arguments.AssignedExecutor
+                status = 'planned'
+            }
+            $script:optionalSourceState.tasks += $task
+            return [pscustomobject]@{ payload = $task }
+        }
+
+        function global:Resolve-TodSelectionActionEntity {
+            param($Payload)
+            return $Payload
+        }
+
+        $plan = [pscustomobject]@{
+            selected_task_id = ''
+            create_task = [pscustomobject]@{
+                objective_mode = 'existing'
+                objective_id = 'OBJ-OPTIONAL'
+                title = 'Created task without optional metadata'
+                type = 'implementation'
+                task_category = 'code_change'
+                assigned_executor = 'local'
+                scope = 'Target File: scripts/TOD.ps1'
+                acceptance_criteria = 'Created task should preserve guarded optional metadata.'
+            }
+        }
+
+        $created = Resolve-TodNextTaskSelectionTask -State $script:optionalSourceState -Plan $plan -ResolvedConfigPath 'tod/config/tod-config.json' -ResolvedStatePath 'tod/data/state.json'
+
+        [string]$created.id | Should Be 'TSK-OPTIONAL-CREATED'
+        $created.PSObject.Properties['selection_source_task_id'] | Should Not BeNullOrEmpty
+        [string]$created.selection_source_task_id | Should Be ''
+        $created.PSObject.Properties['selection_generated_at'] | Should Not BeNullOrEmpty
+
+        Remove-Item function:\Load-State -ErrorAction SilentlyContinue
+        Remove-Item function:\Save-State -ErrorAction SilentlyContinue
+        Remove-Item function:\Invoke-TodSelfJsonAction -ErrorAction SilentlyContinue
+        Remove-Item function:\Resolve-TodSelectionActionEntity -ErrorAction SilentlyContinue
     }
 
     It 'does not create same-task validation-only replans from docs-only autonomy failures' {
@@ -1856,6 +1928,87 @@ Expected output: publish a packet candidate artifact or a precise blocker.
             else {
                 Set-TodSelectionTestFileText -Path $targetPath -Content $originalTargetContent
             }
+        }
+    }
+
+    It 'skips an already-applied packet before old-text staleness and selects a fresh actionable packet' {
+        Invoke-WithIsolatedPacketRepoRoot {
+            $attemptRoot = Join-Path $global:repoRoot 'runtime_remote_training/tod_independent_resolution_attempts'
+            $alreadyAppliedPath = Join-Path $attemptRoot 'TOD_PACKET_FORMATION_TEST_ALREADY_APPLIED.latest.json'
+            $freshPacketPath = Join-Path $attemptRoot 'TOD_PACKET_FORMATION_TEST_FRESH_ACTIONABLE.latest.json'
+            $alreadyTargetPath = Join-Path $global:repoRoot 'tmp_remote_mim/core/routers/already_applied.py'
+            $freshTargetPath = Join-Path $global:repoRoot 'tmp_remote_mim/core/routers/fresh_actionable.py'
+            $alreadyOld = 'return {"status": "old"}'
+            $alreadyNew = 'return {"status": "new"}'
+            $freshOld = 'return {"fresh": false}'
+            $freshNew = 'return {"fresh": true}'
+
+            Set-TodSelectionTestFileText -Path $alreadyTargetPath -Content ("def handler():`n    {0}`n" -f $alreadyNew)
+            Set-TodSelectionTestFileText -Path $freshTargetPath -Content ("def handler():`n    {0}`n" -f $freshOld)
+
+            [ordered]@{
+                artifact_type = 'tod_packet_formation_artifact'
+                generated_at = (Get-Date).ToUniversalTime().ToString('o')
+                status = 'packet_candidate_ready'
+                packet_candidate_ready = $true
+                packet = [ordered]@{
+                    target_file = 'tmp_remote_mim/core/routers/already_applied.py'
+                    intended_edit_mode = 'replace_text'
+                    old_text = $alreadyOld
+                    new_text = $alreadyNew
+                    validation_command = 'python -m py_compile tmp_remote_mim/core/routers/already_applied.py'
+                    validation_pattern = 'status'
+                    closure_evidence = 'already-applied packet should be rejected as already present, not as old_text missing'
+                    prevention_lesson = 'Already-applied packets must not trigger another packet-formation loop.'
+                    dave_needed = 'no'
+                }
+            } | ConvertTo-Json -Depth 12 | Set-Content -Path $alreadyAppliedPath -Encoding UTF8
+
+            [ordered]@{
+                artifact_type = 'tod_packet_formation_artifact'
+                generated_at = (Get-Date).ToUniversalTime().AddSeconds(-5).ToString('o')
+                status = 'packet_candidate_ready'
+                packet_candidate_ready = $true
+                packet = [ordered]@{
+                    target_file = 'tmp_remote_mim/core/routers/fresh_actionable.py'
+                    intended_edit_mode = 'replace_text'
+                    old_text = $freshOld
+                    new_text = $freshNew
+                    validation_command = 'python -m py_compile tmp_remote_mim/core/routers/fresh_actionable.py'
+                    validation_pattern = 'fresh'
+                    closure_evidence = 'fresh packet remains actionable after already-applied candidate is skipped'
+                    prevention_lesson = 'Selector should keep scanning for fresh behavior-changing packets.'
+                    dave_needed = 'no'
+                }
+            } | ConvertTo-Json -Depth 12 | Set-Content -Path $freshPacketPath -Encoding UTF8
+            (Get-Item -Path $alreadyAppliedPath).LastWriteTime = (Get-Date).AddMinutes(10)
+            (Get-Item -Path $freshPacketPath).LastWriteTime = (Get-Date).AddMinutes(9)
+
+            $state = New-SelectionState -Objectives @(
+                (New-SelectionObjective -Id 'OBJ-1' -Priority 'high')
+            ) -Tasks @(
+                (New-SelectionTask -Id 'TSK-1' -ObjectiveId 'OBJ-1' -Status 'completed' -Title 'Completed source task')
+            )
+            $terminalOutcome = [pscustomobject]@{
+                classification = 'completed_with_evidence'
+                task_id = 'TSK-1'
+                objective_id = 'OBJ-1'
+                summary = 'Previous independent TOD resolution training step completed with evidence.'
+            }
+
+            $plan = New-TodNextTaskSelectionPlan -State $state -TerminalOutcome $terminalOutcome -TriggerReason 'Dave-away independent TOD resolution movement'
+
+            [string]$plan.selection_kind | Should Be 'packet_candidate_code_task'
+            [string]$plan.create_task.scope | Should Match 'TOD_PACKET_FORMATION_TEST_FRESH_ACTIONABLE.latest.json'
+            @(@($plan.rejected_candidates) | Where-Object {
+                [string]$_.task_id -eq 'packet_candidate:TOD_PACKET_FORMATION_TEST_ALREADY_APPLIED.latest.json' -and
+                [string]$_.reason -eq 'packet_candidate_new_text_already_present' -and
+                [string]$_.target_file -eq 'tmp_remote_mim/core/routers/already_applied.py'
+            }).Count | Should Be 1
+            @(@($plan.rejected_candidates) | Where-Object {
+                [string]$_.task_id -eq 'packet_candidate:TOD_PACKET_FORMATION_TEST_ALREADY_APPLIED.latest.json' -and
+                [string]$_.reason -eq 'packet_candidate_old_text_not_current'
+            }).Count | Should Be 0
         }
     }
 

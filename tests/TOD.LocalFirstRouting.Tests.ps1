@@ -128,4 +128,34 @@ Describe 'TOD local-first routing policy' {
         [string]$engineConfig.active | Should Be 'codex'
         [string]$engineConfig.routing.reason | Should Be 'local_suitability_codex_required'
     }
+
+    It 'keeps explicit source-anchor observation tasks on the local executor' {
+        $config = [pscustomobject]@{
+            execution_engine = [pscustomobject]@{
+                active = 'local'
+                fallback = 'codex'
+                allow_fallback = $true
+                retry_policy = [pscustomobject]@{ enabled = $false }
+                routing_policy = [pscustomobject]@{ enabled = $false }
+            }
+        }
+        $task = [pscustomobject]@{
+            title = 'Select fresh current-code anchor'
+            scope = @(
+                'Task mode: anchor_selection'
+                'Source File: scripts/engines/LocalExecutionEngine.ps1'
+                'Output: runtime_remote_training/read_only_audit_artifacts/TOD_FRESH_CURRENT_CODE_ANCHOR_SELECTION_R1.latest.json'
+                'Mission: Select one unique source anchor from the current code for a later bounded packet. Do not modify source code.'
+            ) -join "`n"
+            type = 'inspection'
+            task_category = 'source_anchor_observation'
+            assigned_executor = 'local'
+        }
+
+        $engineConfig = Resolve-ExecutionEngineConfig -Config $config -State $null -TaskCategoryHint 'source_anchor_observation' -Task $task
+
+        [string]$engineConfig.active | Should Be 'local'
+        [string]$engineConfig.routing.reason | Should Be 'local_suitability_local_supported'
+        [string]$engineConfig.routing.suitability.reason | Should Be 'source_anchor_observation_is_local_first'
+    }
 }
