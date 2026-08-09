@@ -500,6 +500,22 @@ class TodUiStateClassificationTests(unittest.TestCase):
         self.assertEqual(binding["executor_binding"], self.tod_ui.LOCAL_EXECUTOR_BINDING)
         self.assertEqual(binding["missing_field_or_function"], "")
 
+    def test_binding_repair_detection_accepts_force_bounded_replan_dispatch_tasks(self) -> None:
+        live_task = {
+            "objective_id": "interaction-24-emergency-visible-answer-repair-force_bounded_replan-implementation-remediation-dispatch",
+            "task_id": "interaction-24-emergency-visible-answer-repair-force_bounded_replan-implementation-remediation-dispatch-force_bounded_replan-implementation",
+            "title": "Chat task interaction-24-emergency-visible-answer-repair-force_bounded_replan-implementation-remediation-dispatch-force_bounded_replan-implementation",
+            "summary": "Remediate missing selected_executor, active_engine, and executor_binding fields.",
+            "requested_outcome": "Materialize local executor binding and republish execute-chat-task.",
+        }
+        execution = {
+            "reason_code": "local_suitability_not_materialized",
+            "wait_reason": "blocked_missing_local_executor_binding",
+            "summary": "Task identity is repaired, but no executor binding was produced for the queued next step.",
+        }
+
+        self.assertTrue(self.tod_ui._is_local_executor_binding_repair_task(live_task, execution))
+
     def test_normalize_execution_status_only_moves_above_gate_floor_with_real_implementation_evidence(self) -> None:
         fresh_timestamp = datetime.datetime.now(datetime.timezone.utc).isoformat()
         active_task = {
@@ -1078,7 +1094,7 @@ class TodUiStateClassificationTests(unittest.TestCase):
         self.assertIn("credentials:'same-origin'", source)
         self.assertIn("studio-tod-live-feed-unavailable", source)
         self.assertIn("raw execution alerts are being held out of the primary view", source)
-        self.assertIn("tod-execution-banner{display:none", source)
+        self.assertIn("tod-execution-banner{display:grid", source)
         self.assertNotIn('id="todLifecycle"', source)
         self.assertNotIn("tod-phase-track", source)
 

@@ -1196,6 +1196,14 @@ def _record_executor_binding_event(event: str, objective_id: str, task_id: str, 
     }
     if isinstance(details, dict) and details:
         payload["details"] = details
+    recent_actions = _load_recent_operator_actions()
+    newest_match = None
+    for action in recent_actions:
+        if action.get("action") == payload.get("action") and action.get("objective_id") == payload.get("objective_id") and action.get("task_id") == payload.get("task_id"):
+            if newest_match is None or action.get("generated_at") > newest_match.get("generated_at"):
+                newest_match = action
+    if newest_match and newest_match.get("details") == payload.get("details"):
+        return
     _record_operator_action(payload)
 
 
@@ -1248,7 +1256,29 @@ def _is_local_executor_binding_repair_task(live_task: dict[str, Any], execution:
             execution.get("wait_reason"),
         )
     ).lower()
-    return "tod-local-execution-materializer-binding" in text_blob or LOCAL_EXECUTOR_BINDING.lower() in text_blob
+    if "tod-local-execution-materializer-binding" in text_blob or LOCAL_EXECUTOR_BINDING.lower() in text_blob:
+        return True
+
+    binding_repair_signals = (
+        "executor_binding_missing_detected",
+        "local_execution_binding_missing",
+        "blocked_missing_local_executor_binding",
+        "selected_executor",
+        "active_engine",
+        "executor_binding",
+    )
+    if any(signal in text_blob for signal in binding_repair_signals):
+        return True
+
+    # Some remediation-dispatch tasks intentionally request force-bounded local repair
+    # but do not include the canonical binding token in title/scope text.
+    if (
+        ("force_bounded_replan" in text_blob or "remediation-dispatch" in text_blob)
+        and ("implementation" in text_blob or "repair" in text_blob)
+    ):
+        return True
+
+    return False
 
 
 def _resolve_local_executor_mode() -> str:
@@ -2987,6 +3017,7 @@ def _build_tod_operator_workspace(state: dict[str, Any]) -> dict[str, Any]:
     truth = state.get("tod_status_truth") if isinstance(state.get("tod_status_truth"), dict) else _build_tod_status_truth_object(state)
     training = state.get("training_status") if isinstance(state.get("training_status"), dict) else {}
     actions = state.get("operator_actions") if isinstance(state.get("operator_actions"), list) else []
+    live_request = state.get("live_task_request") if isinstance(state.get("live_task_request"), dict) else {}
 
     status_code = _compact_text(truth.get("status_code") or execution.get("activity_state"), 80) or "idle"
     status_label = _compact_text(truth.get("status_label") or execution.get("activity_label"), 80) or status_code.replace("_", " ").title()
@@ -3006,6 +3037,76 @@ def _build_tod_operator_workspace(state: dict[str, Any]) -> dict[str, Any]:
     )
     last_update_at = _pick_first_text(truth.get("last_update_at"), execution.get("updated_at"), state.get("generated_at"))
     source_artifacts = truth.get("source_artifacts") if isinstance(truth.get("source_artifacts"), dict) else {}
+    execution_evidence = execution.get("execution_evidence") if isinstance(execution.get("execution_evidence"), dict) else {}
+    evidence_files = execution_evidence.get("files_involved") if isinstance(execution_evidence.get("files_involved"), list) else []
+    files_involved = []
+    for item in evidence_files + list(execution.get("matched_files") or []) + list(execution.get("files_changed") or []):
+        value = _compact_text(item, 180)
+        if value and value not in files_involved:
+            files_involved.append(value)
+    pending_actions = [
+        _compact_text(item, 220)
+        for item in (
+            execution_evidence.get("pending_actions")
+            if isinstance(execution_evidence.get("pending_actions"), list)
+            else []
+        )
+        if _compact_text(item, 220)
+    ]
+    if execution_evidence.get("mim_request_pending") is True:
+        pending_actions.append("MIM response pending")
+    if execution_evidence.get("openai_request_pending") is True:
+        pending_actions.append("OpenAI response pending")
+    waiting_on = _clean_operator_status_text(
+        _pick_first_text(
+            execution_evidence.get("waiting_on"),
+            execution.get("wait_target_label"),
+            execution.get("wait_target"),
+        ),
+        220,
+    )
+    live_request_task_id = _compact_text(live_request.get("task_id") or live_request.get("request_id"), 180)
+    live_request_objective_id = _compact_text(
+        live_request.get("objective_id") or live_request.get("normalized_objective_id"),
+        180,
+    )
+    live_request_status = str(live_request.get("status") or "").strip().lower()
+    live_request_pending = bool(
+        live_request_task_id
+        and live_request_status in {"", "pending", "queued", "accepted", "delegated"}
+        and not _same_task_identity(live_request_task_id, task_id)
+    )
+    if live_request_pending:
+        pending_label = f"TOD result pending for {live_request_task_id}"
+        if pending_label not in pending_actions:
+            pending_actions.insert(0, pending_label)
+        waiting_on = f"TOD local listener acknowledgement/result for {live_request_task_id}"
+        files_in_request = live_request.get("files_involved") or live_request.get("allowed_files") or live_request.get("target_files") or []
+        if isinstance(files_in_request, str):
+            files_in_request = [files_in_request]
+        if isinstance(files_in_request, list):
+            for item in files_in_request:
+                value = _compact_text(item, 180)
+                if value and value not in files_involved:
+                    files_involved.append(value)
+    intake_semantic_blocker = _clean_operator_status_text(execution.get("intake_semantic_blocker"), 320)
+    intake_semantic_next_action = _clean_operator_status_text(execution.get("intake_semantic_next_action"), 360)
+    intake_preserved_task_id = _compact_text(execution.get("intake_preserved_task_id"), 180)
+    if intake_semantic_blocker:
+        blocker = intake_semantic_blocker
+        next_action = intake_semantic_next_action or next_action
+        waiting_on = f"Active execution lane {intake_preserved_task_id}" if intake_preserved_task_id else "Active execution lane reconciliation"
+        pending_label = "Retry operator direction after active-lane reconciliation"
+        if pending_label not in pending_actions:
+            pending_actions.insert(0, pending_label)
+    wrapper_evidence_pending = "wrapper success cannot finalize" in blocker.lower()
+    if wrapper_evidence_pending:
+        waiting_on = f"Matched terminal execution evidence for {task_id or 'the active task'}"
+        if next_action.strip().lower().replace("_", " ") in {"blocked with reason", "blocked"}:
+            next_action = f"Publish matched terminal execution evidence for {task_id or 'the active task'}; do not accept wrapper-only success."
+        pending_label = f"Terminal execution evidence pending for {task_id or 'the active task'}"
+        if pending_label not in pending_actions:
+            pending_actions.insert(0, pending_label)
 
     feed_state = {
         **state,
@@ -3053,7 +3154,7 @@ def _build_tod_operator_workspace(state: dict[str, Any]) -> dict[str, Any]:
 
     narrative = _build_tod_progress_narrative(state, truth, execution, timeline)
 
-    return {
+    workspace = {
         "schema_version": "tod-operator-workspace-v1",
         "status_code": status_code,
         "status_label": status_label,
@@ -3064,7 +3165,11 @@ def _build_tod_operator_workspace(state: dict[str, Any]) -> dict[str, Any]:
         "objective_id": objective_id,
         "task_id": task_id,
         "elapsed": _format_age(last_update_at),
-        "waiting": blocker if truth.get("blocked") else "",
+        "blocker": blocker if truth.get("blocked") else "",
+        "waiting": blocker if truth.get("blocked") else waiting_on,
+        "waiting_on": waiting_on,
+        "files_involved": files_involved,
+        "pending_actions": pending_actions,
         "next_action": next_action or "Wait for the next fresh TOD execution artifact.",
         "dave_needed": str(truth.get("dave_needed") or "no").strip(),
         "training": {
@@ -3077,6 +3182,35 @@ def _build_tod_operator_workspace(state: dict[str, Any]) -> dict[str, Any]:
         "controls": queue_items,
         "source_artifacts": source_artifacts,
     }
+    if intake_semantic_blocker:
+        workspace.update(
+            {
+                "working": "TOD received the operator direction but did not execute it.",
+                "blocker": intake_semantic_blocker,
+                "waiting": waiting_on,
+                "waiting_on": waiting_on,
+                "next_action": next_action,
+            }
+        )
+    if live_request_pending:
+        workspace.update(
+            {
+                "status_code": "waiting",
+                "status_label": "Direction Pending",
+                "blocked": False,
+                "current_phase": "Delegated",
+                "working": f"Operator direction published for {live_request_task_id}; waiting for TOD local execution evidence.",
+                "target": live_request_task_id,
+                "objective_id": live_request_objective_id,
+                "task_id": live_request_task_id,
+                "elapsed": _format_age(live_request.get("generated_at")),
+                "blocker": "",
+                "waiting": waiting_on,
+                "waiting_on": waiting_on,
+                "next_action": f"TOD local listener must acknowledge and publish a result for {live_request_task_id}.",
+            }
+        )
+    return workspace
 
 
 def _normalize_execution_status(
@@ -3093,6 +3227,94 @@ def _normalize_execution_status(
     validation = validation_payload if isinstance(validation_payload, dict) else {}
     execution_result = execution_result_payload if isinstance(execution_result_payload, dict) else {}
     truth = truth_payload if isinstance(truth_payload, dict) else {}
+
+    output_preview = execution_result.get("output_preview")
+    intake_semantic_blocker = ""
+    intake_semantic_next_action = ""
+    intake_preserved_task_id = ""
+    preview_payload: dict[str, Any] = {}
+    if isinstance(output_preview, str) and output_preview.strip().startswith("{"):
+        try:
+            parsed_preview = json.loads(output_preview)
+            preview_payload = parsed_preview if isinstance(parsed_preview, dict) else {}
+        except (TypeError, ValueError, json.JSONDecodeError):
+            preview_payload = {}
+    preview_reason_codes = preview_payload.get("reason_codes") if isinstance(preview_payload.get("reason_codes"), list) else []
+    if "intake_arbitration_reject_duplicate" in preview_reason_codes:
+        selected_task = preview_payload.get("selected_task") if isinstance(preview_payload.get("selected_task"), dict) else {}
+        intake_preserved_task_id = str(selected_task.get("task_id") or "the existing active task").strip()
+        intake_semantic_blocker = (
+            "Direction was not executed: TOD intake rejected it as a duplicate and preserved "
+            f"active task {intake_preserved_task_id}."
+        )
+        intake_semantic_next_action = "Reconcile the active execution lane before retrying this direction."
+        execution_result = {
+            **execution_result,
+            "status": "blocked",
+            "summary": intake_semantic_blocker,
+            "wait_reason": intake_semantic_blocker,
+            "next_step": intake_semantic_next_action,
+        }
+
+    identity_payloads = (active_task, activity, execution_result, truth)
+    freshest_identity: dict[str, Any] = {}
+    freshest_identity_dt = None
+    for candidate in identity_payloads:
+        candidate_objective_id = str(
+            candidate.get("objective_id") or candidate.get("normalized_objective_id") or ""
+        ).strip()
+        if not candidate_objective_id:
+            continue
+        candidate_dt = _parse_timestamp(
+            _pick_latest_timestamp(candidate.get("updated_at"), candidate.get("generated_at"))
+        )
+        if not freshest_identity or (
+            candidate_dt is not None
+            and (freshest_identity_dt is None or candidate_dt > freshest_identity_dt)
+        ):
+            freshest_identity = candidate
+            freshest_identity_dt = candidate_dt
+
+    authoritative_objective_id = str(
+        freshest_identity.get("objective_id")
+        or freshest_identity.get("normalized_objective_id")
+        or ""
+    ).strip()
+    if authoritative_objective_id:
+        active_objective_id = str(
+            active_objective.get("objective_id") or active_objective.get("normalized_objective_id") or ""
+        ).strip()
+        active_task_id = str(
+            active_task.get("objective_id") or active_task.get("normalized_objective_id") or ""
+        ).strip()
+        activity_objective_id = str(
+            activity.get("objective_id") or activity.get("normalized_objective_id") or ""
+        ).strip()
+        validation_objective_id = str(
+            validation.get("objective_id") or validation.get("normalized_objective_id") or ""
+        ).strip()
+        execution_result_objective_id = str(
+            execution_result.get("objective_id")
+            or execution_result.get("normalized_objective_id")
+            or ""
+        ).strip()
+        truth_objective_id = str(
+            truth.get("objective_id") or truth.get("normalized_objective_id") or ""
+        ).strip()
+        if active_objective_id and not _same_objective(active_objective_id, authoritative_objective_id):
+            active_objective = {}
+        if active_task_id and not _same_objective(active_task_id, authoritative_objective_id):
+            active_task = {}
+        if activity_objective_id and not _same_objective(activity_objective_id, authoritative_objective_id):
+            activity = {}
+        if validation_objective_id and not _same_objective(validation_objective_id, authoritative_objective_id):
+            validation = {}
+        if execution_result_objective_id and not _same_objective(execution_result_objective_id, authoritative_objective_id):
+            execution_result = {}
+        if truth_objective_id and not _same_objective(truth_objective_id, authoritative_objective_id):
+            truth = {}
+        if not active_task and activity:
+            active_task = activity
 
     available = any(bool(payload) for payload in (active_objective, active_task, activity, validation, execution_result, truth))
     updated_at = _pick_latest_timestamp(
@@ -3149,6 +3371,7 @@ def _normalize_execution_status(
     )
     summary = _compact_text(
         execution_result.get("summary")
+        or execution_result.get("error")
         or active_task.get("summary")
         or activity.get("summary")
         or current_action
@@ -3217,6 +3440,7 @@ def _normalize_execution_status(
     )
     wait_reason = _compact_text(
         execution_result.get("wait_reason")
+        or execution_result.get("error")
         or active_task.get("wait_reason")
         or activity.get("wait_reason")
         or execution_evidence.get("wait_reason")
@@ -3520,6 +3744,9 @@ def _normalize_execution_status(
         "executor_binding_target": executor_binding_target,
         "executor_binding_command": executor_binding_command,
         "circular_block_converted": circular_block_converted,
+        "intake_semantic_blocker": intake_semantic_blocker,
+        "intake_semantic_next_action": intake_semantic_next_action,
+        "intake_preserved_task_id": intake_preserved_task_id,
     }
 
 
@@ -7983,6 +8210,7 @@ def _build_tod_console_state() -> dict[str, Any]:
         SHARED_RUNTIME_ROOT / "TOD_VALIDATION_RESULT.latest.json",
     )
     execution_result_payload, execution_result_path = _first_existing_payload(
+        SHARED_RUNTIME_ROOT / "TOD_MIM_TASK_RESULT.latest.json",
         SHARED_RUNTIME_ROOT / "TOD_EXECUTION_RESULT.latest.json",
     )
     truth_payload, truth_path = _first_existing_payload(
@@ -8931,6 +9159,44 @@ def _build_tod_console_state() -> dict[str, Any]:
             "task_id": str(live_task_request.get("task_id") or "").strip(),
             "objective_id": str(live_task_request.get("objective_id") or "").strip(),
             "normalized_objective_id": str(live_task_request.get("normalized_objective_id") or "").strip(),
+            "source": str(live_task_request.get("source") or "").strip(),
+            "source_service": str(live_task_request.get("source_service") or "").strip(),
+            "selected_executor": str(
+                live_task_request.get("selected_executor")
+                or (
+                    live_task_request.get("metadata_json", {}).get("selected_executor")
+                    if isinstance(live_task_request.get("metadata_json"), dict)
+                    else ""
+                )
+                or ""
+            ).strip(),
+            "active_engine": str(
+                live_task_request.get("active_engine")
+                or (
+                    live_task_request.get("metadata_json", {}).get("active_engine")
+                    if isinstance(live_task_request.get("metadata_json"), dict)
+                    else ""
+                )
+                or ""
+            ).strip(),
+            "executor_binding": str(
+                live_task_request.get("executor_binding")
+                or (
+                    live_task_request.get("metadata_json", {}).get("executor_binding")
+                    if isinstance(live_task_request.get("metadata_json"), dict)
+                    else ""
+                )
+                or ""
+            ).strip(),
+            "bounded_edit_mode": str(
+                live_task_request.get("bounded_edit_mode")
+                or (
+                    live_task_request.get("metadata_json", {}).get("bounded_edit_mode")
+                    if isinstance(live_task_request.get("metadata_json"), dict)
+                    else ""
+                )
+                or ""
+            ).strip(),
             "generated_at": str(live_task_request.get("generated_at") or "").strip(),
             "generated_age": _format_age(live_task_request.get("generated_at")),
             "promotion_applied": bool(live_task_request.get("promotion_applied") is True),
