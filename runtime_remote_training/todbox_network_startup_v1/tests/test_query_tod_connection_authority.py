@@ -26,3 +26,10 @@ def test_query_utility_contains_no_literal_todbox_lan_address():
     source = SCRIPT.read_text(encoding="utf-8")
 
     assert "192.168." not in source
+
+
+def test_generic_json_authority_loader_rejects_non_object(tmp_path):
+    authority = tmp_path / "managed.json"
+    authority.write_text('["not", "an", "authority"]', encoding="utf-8")
+
+    assert MODULE.load_json_authority(authority) == {}

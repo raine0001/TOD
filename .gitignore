@@ -27,6 +27,7 @@ state.json
 tod/data/state.json
 tod/data/test-summary.json
 tod/state/engineering_memory.json
+tod/state/managed_ssh_connectivity.latest.json
 
 # Ephemeral test configs
 tod/config/tod-config.test-*.json

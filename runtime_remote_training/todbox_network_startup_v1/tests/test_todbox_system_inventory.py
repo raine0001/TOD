@@ -70,6 +70,16 @@ def test_inventory_uses_observed_tunnel_hostname_and_does_not_invent_origin(monk
             "requires": [],
         },
     )
+    monkeypatch.setattr(
+        VERIFY,
+        "ssh_access_inventory",
+        lambda _user: {
+            "ready": True,
+            "host_ed25519_fingerprints": ["SHA256:host"],
+            "authorized_client_fingerprints": ["SHA256:client"],
+            "authorized_keys_path": "/home/tod/.ssh/authorized_keys",
+        },
+    )
 
     inventory = VERIFY.build_system_inventory(_result())
     gateway = inventory["connections"]["agentmim_mim_gateway"]
@@ -81,6 +91,12 @@ def test_inventory_uses_observed_tunnel_hostname_and_does_not_invent_origin(monk
     assert gateway["operational_owner"] == "TOD"
     assert inventory["authority"]["owner"] == "TOD"
     assert inventory["authority"]["secret_material_included"] is False
+    ssh = inventory["connections"]["todbox_ssh_admin"]
+    assert ssh["status"] == "ready"
+    assert ssh["user"] == "tod"
+    assert ssh["host_ed25519_fingerprints"] == ["SHA256:host"]
+    assert ssh["authorized_client_fingerprints"] == ["SHA256:client"]
+    assert ssh["secret_material_included"] is False
 
 
 def test_inventory_history_is_written_only_for_configuration_change(tmp_path):
@@ -114,6 +130,16 @@ def test_query_returns_forum_image_gateway_evidence(monkeypatch):
             "requires": [],
         },
     )
+    monkeypatch.setattr(
+        VERIFY,
+        "ssh_access_inventory",
+        lambda _user: {
+            "ready": True,
+            "host_ed25519_fingerprints": ["SHA256:host"],
+            "authorized_client_fingerprints": ["SHA256:client"],
+            "authorized_keys_path": "/home/tod/.ssh/authorized_keys",
+        },
+    )
     inventory = VERIFY.build_system_inventory(_result())
 
     answer = QUERY.query_inventory(inventory, "forum_image_generation")
@@ -121,3 +147,37 @@ def test_query_returns_forum_image_gateway_evidence(monkeypatch):
     assert answer["owner"] == "TOD"
     assert answer["matches"][0]["stable_endpoint"] == "https://mim.mimtod.com"
     assert answer["matches"][0]["origin"] == "not_asserted_from_available_evidence"
+
+
+def test_query_returns_todbox_ssh_authority(monkeypatch):
+    monkeypatch.setattr(
+        VERIFY,
+        "systemd_service_inventory",
+        lambda _name: {
+            "observed": True,
+            "active_state": "active",
+            "unit_file_state": "enabled",
+            "fragment_path": "",
+            "fragment_sha256": "",
+            "after": [],
+            "wants": [],
+            "requires": [],
+        },
+    )
+    monkeypatch.setattr(
+        VERIFY,
+        "ssh_access_inventory",
+        lambda _user: {
+            "ready": True,
+            "host_ed25519_fingerprints": ["SHA256:host"],
+            "authorized_client_fingerprints": ["SHA256:client"],
+            "authorized_keys_path": "/home/tod/.ssh/authorized_keys",
+        },
+    )
+    inventory = VERIFY.build_system_inventory(_result())
+
+    answer = QUERY.query_inventory(inventory, "todbox")
+
+    assert answer["owner"] == "TOD"
+    assert answer["matches"][0]["connection"] == "todbox_ssh_admin"
+    assert answer["matches"][0]["status"] == "ready"

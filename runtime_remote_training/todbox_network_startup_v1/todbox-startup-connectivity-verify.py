@@ -147,11 +147,44 @@ def systemd_service_inventory(name: str) -> dict[str, Any]:
     }
 
 
+def ssh_access_inventory(user: str = "tod", home: Path | None = None) -> dict[str, Any]:
+    """Collect public SSH identity evidence without copying key material."""
+    home = home or (Path("/home") / user)
+    host_key = Path("/etc/ssh/ssh_host_ed25519_key.pub")
+    authorized_keys = home / ".ssh" / "authorized_keys"
+    host_result = command("ssh-keygen", "-lf", str(host_key)) if host_key.is_file() else {"ok": False}
+    authorized_result = command("ssh-keygen", "-lf", str(authorized_keys)) if authorized_keys.is_file() else {"ok": False}
+
+    def fingerprints(result: dict[str, Any]) -> list[str]:
+        values = []
+        for line in str(result.get("stdout") or "").splitlines():
+            fields = line.split()
+            if len(fields) >= 2 and fields[1].startswith("SHA256:"):
+                values.append(fields[1])
+        return sorted(set(values))
+
+    host_fingerprints = fingerprints(host_result)
+    authorized_fingerprints = fingerprints(authorized_result)
+    return {
+        "user": user,
+        "ready": bool(host_fingerprints and authorized_fingerprints),
+        "host_ed25519_fingerprints": host_fingerprints,
+        "authorized_client_fingerprints": authorized_fingerprints,
+        "authorized_keys_path": str(authorized_keys),
+        "secret_material_included": False,
+    }
+
+
 def _configuration_view(inventory: dict[str, Any]) -> dict[str, Any]:
     host = inventory.get("host") if isinstance(inventory.get("host"), dict) else {}
     services = inventory.get("services") if isinstance(inventory.get("services"), dict) else {}
     connection = (
         inventory.get("connections", {}).get("agentmim_mim_gateway", {})
+        if isinstance(inventory.get("connections"), dict)
+        else {}
+    )
+    ssh_connection = (
+        inventory.get("connections", {}).get("todbox_ssh_admin", {})
         if isinstance(inventory.get("connections"), dict)
         else {}
     )
@@ -185,6 +218,14 @@ def _configuration_view(inventory: dict[str, Any]) -> dict[str, Any]:
             "origin": connection.get("origin"),
             "origin_mapping_proven": connection.get("origin_mapping_proven"),
         },
+        "todbox_ssh_admin": {
+            "owner": ssh_connection.get("owner"),
+            "user": ssh_connection.get("user"),
+            "port": ssh_connection.get("port"),
+            "service_address": ssh_connection.get("service_address"),
+            "host_ed25519_fingerprints": ssh_connection.get("host_ed25519_fingerprints"),
+            "authorized_client_fingerprints": ssh_connection.get("authorized_client_fingerprints"),
+        },
         "models": [
             {"role": model.get("role"), "model": model.get("model")}
             for model in models
@@ -216,6 +257,7 @@ def build_system_inventory(result: dict[str, Any]) -> dict[str, Any]:
     )
     services = {name: systemd_service_inventory(name) for name in service_names}
     tunnel = services[TUNNEL_SERVICE]
+    ssh_access = ssh_access_inventory("tod")
     tunnel_healthy = bool(
         gateway.get("endpoint_mode") == "managed_tunnel"
         and gateway.get("ok")
@@ -273,7 +315,30 @@ def build_system_inventory(result: dict[str, Any]) -> dict[str, Any]:
                     "public_gateway_health": "https://mim.mimtod.com/health",
                     "startup_verifier": str(DEFAULT_OUTPUT),
                 },
-            }
+            },
+            "todbox_ssh_admin": {
+                "owner": "TOD",
+                "operational_owner": "TOD",
+                "user": "tod",
+                "port": 22,
+                "service_address": result.get("fixed_cidr"),
+                "address_policy": "fixed_service_address_managed_by_tod",
+                "status": "ready" if ssh_access.get("ready") else "degraded",
+                "host_ed25519_fingerprints": ssh_access.get("host_ed25519_fingerprints", []),
+                "authorized_client_fingerprints": ssh_access.get("authorized_client_fingerprints", []),
+                "secret_material_included": False,
+                "declared_capabilities": [
+                    "ssh",
+                    "todbox",
+                    "todbox_admin",
+                    "tod_migration",
+                ],
+                "evidence": {
+                    "ssh_service": "checks.ssh_service",
+                    "ssh_port": "checks.ssh_port",
+                    "authorized_keys_path": ssh_access.get("authorized_keys_path"),
+                },
+            },
         },
         "models": [
             {

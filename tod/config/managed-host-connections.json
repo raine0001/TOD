@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "managed_by": "TOD",
+  "verification_interval_minutes": 15,
+  "hosts": {
+    "todbox": {
+      "aliases": ["todbox"],
+      "role": "TOD compute and future primary runtime host",
+      "address": "192.168.1.10",
+      "address_policy": "fixed_service_address_managed_by_tod",
+      "user": "tod",
+      "port": 22,
+      "identity_file": ".ssh/todbox_codex_admin_ed25519",
+      "expected_identity_fingerprint": "SHA256:TA8vdlIJMpxYtnl4oWryePzHiCw6/niezcNJwvbHQTI",
+      "expected_host_ed25519_fingerprint": "SHA256:Erfyug/0fneeKNchpT7TMQE1FZQJtUajVWR8eEANrK4",
+      "server_verifier": "todbox-startup-connectivity-verify.timer",
+      "server_inventory": "/var/lib/todbox-connectivity/system-inventory.latest.json"
+    },
+    "mimbox": {
+      "aliases": ["mimbox", "mim"],
+      "role": "MIM communication authority",
+      "address": "192.168.1.120",
+      "address_policy": "fixed_service_address_managed_by_tod",
+      "user": "tod",
+      "port": 22,
+      "identity_file": ".ssh/todbox_codex_admin_ed25519",
+      "expected_identity_fingerprint": "SHA256:TA8vdlIJMpxYtnl4oWryePzHiCw6/niezcNJwvbHQTI",
+      "expected_host_ed25519_fingerprint": "SHA256:N5RbhYCEZjigHJKOQFX/HlzKCpgVB6ygGl1tGIkNYts",
+      "managed_consumers": [
+        {
+          "type": "dotenv",
+          "path": "tmp_remote_mim/.env",
+          "key": "MIM_SSH_HOST"
+        }
+      ]
+    }
+  }
+}

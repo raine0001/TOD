@@ -9,6 +9,8 @@ import paramiko
 
 
 TODBOX_CONNECTION_AUTHORITY = Path(r"E:\TOD\tod\config\todbox-connection.json")
+MANAGED_HOST_AUTHORITY = Path(r"E:\TOD\tod\config\managed-host-connections.json")
+MANAGED_HOST_REPORT = Path(r"E:\TOD\tod\state\managed_ssh_connectivity.latest.json")
 REMOTE_SYSTEM_INVENTORY = "/var/lib/todbox-connectivity/system-inventory.latest.json"
 
 
@@ -23,6 +25,16 @@ def load_env(path: Path) -> dict[str, str]:
 
 
 def load_connection_authority(path: Path = TODBOX_CONNECTION_AUTHORITY) -> dict[str, object]:
+    if not path.is_file():
+        return {}
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
+
+
+def load_json_authority(path: Path) -> dict[str, object]:
     if not path.is_file():
         return {}
     try:
@@ -61,9 +73,16 @@ def main() -> int:
     prompt = sys.stdin.read()
     values = load_env(Path(r"E:\TOD\tmp_remote_mim\.env"))
     authority = load_connection_authority()
+    managed_hosts = load_json_authority(MANAGED_HOST_AUTHORITY)
+    managed_todbox = (
+        managed_hosts.get("hosts", {}).get("todbox", {})
+        if isinstance(managed_hosts.get("hosts"), dict)
+        else {}
+    )
     tod_host = (
         os.environ.get("TOD_SERVER_HOST")
         or values.get("TOD_SERVER_HOST")
+        or str(managed_todbox.get("address") or "")
         or str(authority.get("ssh_host") or "")
     ).strip()
     if not tod_host:
@@ -107,6 +126,22 @@ def main() -> int:
     client.close()
 
     messages = []
+    managed_host_report = load_json_authority(MANAGED_HOST_REPORT)
+    if managed_hosts:
+        messages.append(
+            {
+                "role": "system",
+                "content": (
+                    "Use this TOD-managed SSH host registry and latest client proof when asked how to "
+                    "connect to TODBOX or MIMBOX. Prefer the alias command, report whether key login "
+                    "was actually proven, and never expose or request a password or private key.\n"
+                    + json.dumps(
+                        {"registry": managed_hosts, "latest_proof": managed_host_report},
+                        sort_keys=True,
+                    )
+                ),
+            }
+        )
     if inventory:
         messages.append(
             {
@@ -133,6 +168,8 @@ def main() -> int:
     )
     with urllib.request.urlopen(request, timeout=180) as response:
         result = json.load(response)
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     print(result["choices"][0]["message"]["content"])
     return 0
 
