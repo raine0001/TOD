@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic TODBOX connectivity verification
+
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=15min
+Persistent=true
+Unit=todbox-startup-connectivity-verify.service
+
+[Install]
+WantedBy=timers.target

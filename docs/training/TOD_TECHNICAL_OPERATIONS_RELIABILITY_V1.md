@@ -348,3 +348,30 @@ The older public TOD compatibility check still targets `https://www.agentmim.com
 Training rule:
 
 TOD must separate current public site health from obsolete compatibility probes. A stale probe must be retired, reconfigured, or explicitly marked compatibility-only; it must not be allowed to mask current route health.
+
+## Live Infrastructure Inventory and Drift Ownership
+
+Implemented on 2026-08-25 as a scaffolded Technical Operations capability:
+
+- The existing TODBOX boot and 15-minute connectivity verifier now publishes `/var/lib/todbox-connectivity/system-inventory.latest.json`.
+- Inventory facts include TOD ownership, hostname/interface policy, systemd service state and dependency fields, unit configuration hashes, active model lanes, AgentMIM's stable MIM gateway hostname and mode, and evidence URLs.
+- Missing tunnel origin mapping is recorded as `origin_mapping_proven=false`, not inferred.
+- A configuration fingerprint produces change-only history under `/var/lib/todbox-connectivity/inventory-changes/`.
+- An unchanged patrol updates freshness without creating duplicate history.
+- `todbox-system-inventory-query forum_image_generation` returns the current tunnel evidence.
+- TOD's evidence query automatically receives the fresh inventory, allowing natural-language infrastructure answers without starting discovery from zero.
+
+Current acceptance evidence:
+
+- owner: `TOD`
+- stable endpoint: `https://mim.mimtod.com`
+- mode: `managed_tunnel`
+- tunnel service: `cloudflared-todbox-hosting.service`
+- status: `reachable`
+- maximum inventory age: 900 seconds
+- origin mapping: not proven
+- live acceptance: passed with scaffolded inventory context
+
+Independence boundary:
+
+This capability remains `scaffolded_pass`. TOD must independently absorb a fresh analogous service/configuration change and update or extend the inventory without Codex selecting the fields or implementation.

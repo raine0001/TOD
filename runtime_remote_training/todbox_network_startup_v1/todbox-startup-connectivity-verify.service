@@ -1,0 +1,14 @@
+[Unit]
+Description=TODBOX startup network and AgentMIM connectivity verification
+After=network-online.target ssh.service mim-llama.service tod-llama.service
+Wants=network-online.target ssh.service mim-llama.service tod-llama.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/todbox-startup-connectivity-verify --timeout 720 --interval 10
+TimeoutStartSec=780
+Restart=on-failure
+RestartSec=60
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "managed_by": "TOD",
+  "host_identity": "tod-ai-01",
+  "ssh_host": "192.168.1.10",
+  "ssh_port": 22,
+  "api_port": 8102,
+  "address_policy": "fixed_service_address_plus_dhcp",
+  "agentmim_connection_policy": "managed_tunnel_only",
+  "agentmim_gateway_hostname": "mim.mimtod.com",
+  "last_verified_at": "2026-08-25T16:47:37Z"
+}

@@ -1,0 +1,14 @@
+[Unit]
+Description=Recover and prove GPU-backed MIM Ollama vision review
+Requires=docker.service
+Wants=nvidia-persistenced.service mim-llama.service tod-llama.service
+After=docker.service nvidia-persistenced.service mim-llama.service tod-llama.service
+Before=mim-creative-worker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/mim-ollama-gpu-readiness --timeout 300 --interval 5
+TimeoutStartSec=330
+
+[Install]
+WantedBy=multi-user.target

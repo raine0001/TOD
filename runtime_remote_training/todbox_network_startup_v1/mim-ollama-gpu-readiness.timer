@@ -1,0 +1,11 @@
+[Unit]
+Description=Periodic MIM Ollama GPU readiness verification
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=15min
+Persistent=true
+Unit=mim-ollama-gpu-readiness.service
+
+[Install]
+WantedBy=timers.target
